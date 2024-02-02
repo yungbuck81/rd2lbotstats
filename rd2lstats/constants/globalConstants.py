@@ -32,36 +32,36 @@ fantasy_first_blood = 4
 fantasy_stuns_multiplier = 0.05
 
 # Pos 1 constants
-pos1directory = "rd2lstats/pos1stats/"
-pos1currentdirectory = "rd2lstats/current_week_stats/pos1stats/"
+pos1directory = "rd2lbotstats/rd2lstats/pos1stats/"
+pos1currentdirectory = "rd2lbotstats/rd2lstats/current_week_stats/pos1stats/"
 pos1gpmfile = "pos1gpmLeaderboard.csv"
 pos1kdafile = "pos1kdaLeaderboard.csv"
 pos1fantasyfile = "pos1fantasyLeaderboard.csv"
 
 # Pos 2 constants
-pos2directory = "rd2lstats/pos2stats/"
-pos2currentdirectory = "rd2lstats/current_week_stats/pos2stats/"
+pos2directory = "rd2lbotstats/rd2lstats/pos2stats/"
+pos2currentdirectory = "rd2lbotstats/rd2lstats/current_week_stats/pos2stats/"
 pos2gpmfile = "pos2gpmLeaderboard.csv"
 pos2kdafile = "pos2kdaLeaderboard.csv"
 pos2fantasyfile = "pos2fantasyLeaderboard.csv"
 
 # Pos 3 constants
-pos3directory = "rd2lstats/pos3stats/"
-pos3currentdirectory = "rd2lstats/current_week_stats/pos3stats/"
+pos3directory = "rd2lbotstats/rd2lstats/pos3stats/"
+pos3currentdirectory = "rd2lbotstats/rd2lstats/current_week_stats/pos3stats/"
 pos3gpmfile = "pos3gpmLeaderboard.csv"
 pos3kdafile = "pos3kdaLeaderboard.csv"
 pos3fantasyfile = "pos3fantasyLeaderboard.csv"
 
 # Pos 4 constants
-pos4directory = "rd2lstats/pos4stats/"
-pos4currentdirectory = "rd2lstats/current_week_stats/pos4stats/"
+pos4directory = "rd2lbotstats/rd2lstats/pos4stats/"
+pos4currentdirectory = "rd2lbotstats/rd2lstats/current_week_stats/pos4stats/"
 pos4gpmfile = "pos4gpmLeaderboard.csv"
 pos4kdafile = "pos4kdaLeaderboard.csv"
 pos4fantasyfile = "pos4fantasyLeaderboard.csv"
 
 # Pos 5 constants
-pos5directory = "rd2lstats/pos5stats/"
-pos5currentdirectory = "rd2lstats/current_week_stats/pos5stats/"
+pos5directory = "rd2lbotstats/rd2lstats/pos5stats/"
+pos5currentdirectory = "rd2lbotstats/rd2lstats/current_week_stats/pos5stats/"
 pos5gpmfile = "pos5gpmLeaderboard.csv"
 pos5kdafile = "pos5kdaLeaderboard.csv"
 pos5fantasyfile = "pos5fantasyLeaderboard.csv"
