@@ -33,20 +33,12 @@ def process_dict_values_into_list(dict1):
 
 
 # Function to find player in dictionaries
-def find_player_in_dictionaries(player, dict1, dict2, dict3, dict4, dict5):
-    if player in dict1:
-        return dict1
-    if player in dict2:
-        return dict2
-    if player in dict3:
-        return dict3
-    if player in dict4:
-        return dict4
-    if player in dict5:
-        return dict5
-    else:
-        print("Player: {} was not found in any dictionary provided".format(player))
-        return
+def find_player_in_dictionaries(player, data):
+    for _dict in data:
+        if player in _dict:
+            return _dict
+    print("Player: {} was not found in any dictionary provided".format(player))
+    return
 
 # Calculate weighted average given a stat
 def passes_role_threshold(stat, games_played):
