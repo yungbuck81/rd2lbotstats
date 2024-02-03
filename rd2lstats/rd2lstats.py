@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import discord
 import requests
 import json
@@ -12,9 +13,9 @@ from constants.globalConstants import fantasy_kill_multiplier, fantasy_death_mul
     pos4gpmfile, pos5directory, pos5gpmfile, pos1kdafile, pos2kdafile, pos4kdafile, pos3kdafile, pos5kdafile, \
     pos1fantasyfile, pos2fantasyfile, pos3fantasyfile, pos4fantasyfile, pos5fantasyfile, match_ids, \
     opendota_api_matches_url, dotabuff_url, opendota_api_players_url, steam_cdn, permissionkeyfile, \
-    pos1currentdirectory, pos2currentdirectory, pos3currentdirectory, pos4currentdirectory, pos5currentdirectory
+    pos1currentdirectory, pos2currentdirectory, pos3currentdirectory, pos4currentdirectory, pos5currentdirectory, player_ranking_cutoff
 from constants.hero_ids import get_hero_name
-from constants.localconfig import admin_id
+from constants.localconfig import ADMIN_IDS
 import time
 import ast
 import copy
@@ -84,7 +85,19 @@ class Rd2lStats:
         self.highest_courier_hero = 0
         self.highest_courier_match = ""
 
+        self.highest_deaths_value = 0
+        self.highest_deaths_player = ""
+        self.highest_deaths_hero = 0
+        self.highest_deaths_match = ""
+
         self.stats_leaders_dict = {}
+
+        self.gpmcurrent_data = {}
+        self.kdacurrent_data = {}
+        self.fantasycurrent_data = {}
+        self.gpm_data = {}
+        self.kda_data = {}
+        self.fantasy_data = {}
 
     # Function that calculates the fantasy score for a player object
     def get_fantasy_score(self, player):
@@ -121,79 +134,92 @@ class Rd2lStats:
     def get_player_name_for_account_id(self, playerId):
         response = requests.get(opendota_api_players_url + playerId)
         json_data = json.loads(response.text)
-        return json_data['profile']['name'] if json_data['profile']['name'] is not None else json_data['profile']['personaname']
+        if 'profile' in json_data:
+            return json_data['profile']['name'] if json_data['profile'].get('name') is not None else json_data['profile']['personaname']
+        else:
+            return "Name not found"
 
     # Function to process csv files and check duplicates for a single player across multiple pos. User can select
     # manually which role they should belong to
     def find_duplicates(self):
 
-        # TODO: Improve data structure used to be a single object
-        gpm1current = process_dict_values_into_list(
-            dict(csv.reader(open(pos1currentdirectory + pos1gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm2current = process_dict_values_into_list(
-            dict(csv.reader(open(pos2currentdirectory + pos2gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm3current = process_dict_values_into_list(
-            dict(csv.reader(open(pos3currentdirectory + pos3gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm4current = process_dict_values_into_list(
-            dict(csv.reader(open(pos4currentdirectory + pos4gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm5current = process_dict_values_into_list(
-            dict(csv.reader(open(pos5currentdirectory + pos5gpmfile, 'r', encoding="utf-8", newline=''))))
+        self.gpmcurrent_data = {
+          'gpm1' : process_dict_values_into_list(
+              dict(csv.reader(open(pos1currentdirectory + pos1gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm2' : process_dict_values_into_list(
+              dict(csv.reader(open(pos2currentdirectory + pos2gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm3' : process_dict_values_into_list(
+              dict(csv.reader(open(pos3currentdirectory + pos3gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm4' : process_dict_values_into_list(
+              dict(csv.reader(open(pos4currentdirectory + pos4gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm5' : process_dict_values_into_list(
+              dict(csv.reader(open(pos5currentdirectory + pos5gpmfile, 'r', encoding="utf-8", newline=''))))
+        }
 
-        kda1current = process_dict_values_into_list(
-            dict(csv.reader(open(pos1currentdirectory + pos1kdafile, 'r', encoding="utf-8", newline=''))))
-        kda2current = process_dict_values_into_list(
-            dict(csv.reader(open(pos2currentdirectory + pos2kdafile, 'r', encoding="utf-8", newline=''))))
-        kda3current = process_dict_values_into_list(
-            dict(csv.reader(open(pos3currentdirectory + pos3kdafile, 'r', encoding="utf-8", newline=''))))
-        kda4current = process_dict_values_into_list(
-            dict(csv.reader(open(pos4currentdirectory + pos4kdafile, 'r', encoding="utf-8", newline=''))))
-        kda5current = process_dict_values_into_list(
-            dict(csv.reader(open(pos5currentdirectory + pos5kdafile, 'r', encoding="utf-8", newline=''))))
+        self.kdacurrent_data = {
+          'kda1' : process_dict_values_into_list(
+              dict(csv.reader(open(pos1currentdirectory + pos1kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda2' : process_dict_values_into_list(
+              dict(csv.reader(open(pos2currentdirectory + pos2kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda3' : process_dict_values_into_list(
+              dict(csv.reader(open(pos3currentdirectory + pos3kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda4' : process_dict_values_into_list(
+              dict(csv.reader(open(pos4currentdirectory + pos4kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda5' : process_dict_values_into_list(
+              dict(csv.reader(open(pos5currentdirectory + pos5kdafile, 'r', encoding="utf-8", newline=''))))
+        }
 
-        fantasy1current = process_dict_values_into_list(
-            dict(csv.reader(open(pos1currentdirectory + pos1fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy2current = process_dict_values_into_list(
-            dict(csv.reader(open(pos2currentdirectory + pos2fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy3current = process_dict_values_into_list(
-            dict(csv.reader(open(pos3currentdirectory + pos3fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy4current = process_dict_values_into_list(
-            dict(csv.reader(open(pos4currentdirectory + pos4fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy5current = process_dict_values_into_list(
-            dict(csv.reader(open(pos5currentdirectory + pos5fantasyfile, 'r', encoding="utf-8", newline=''))))
+        self.fantasycurrent_data = {
+          'fantasy1' : process_dict_values_into_list(
+              dict(csv.reader(open(pos1currentdirectory + pos1fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy2' : process_dict_values_into_list(
+              dict(csv.reader(open(pos2currentdirectory + pos2fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy3' : process_dict_values_into_list(
+              dict(csv.reader(open(pos3currentdirectory + pos3fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy4' : process_dict_values_into_list(
+              dict(csv.reader(open(pos4currentdirectory + pos4fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy5' : process_dict_values_into_list(
+              dict(csv.reader(open(pos5currentdirectory + pos5fantasyfile, 'r', encoding="utf-8", newline=''))))
+        }
 
-        # TODO: Improve data structure used to be a single object
-        gpm1 = process_dict_values_into_list(
-            dict(csv.reader(open(pos1directory + pos1gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm2 = process_dict_values_into_list(
-            dict(csv.reader(open(pos2directory + pos2gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm3 = process_dict_values_into_list(
-            dict(csv.reader(open(pos3directory + pos3gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm4 = process_dict_values_into_list(
-            dict(csv.reader(open(pos4directory + pos4gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm5 = process_dict_values_into_list(
-            dict(csv.reader(open(pos5directory + pos5gpmfile, 'r', encoding="utf-8", newline=''))))
+        self.gpm_data = {
+          'gpm1' : process_dict_values_into_list(
+              dict(csv.reader(open(pos1directory + pos1gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm2' : process_dict_values_into_list(
+              dict(csv.reader(open(pos2directory + pos2gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm3' : process_dict_values_into_list(
+              dict(csv.reader(open(pos3directory + pos3gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm4' : process_dict_values_into_list(
+              dict(csv.reader(open(pos4directory + pos4gpmfile, 'r', encoding="utf-8", newline='')))),
+          'gpm5' : process_dict_values_into_list(
+              dict(csv.reader(open(pos5directory + pos5gpmfile, 'r', encoding="utf-8", newline=''))))
+        }
 
-        kda1 = process_dict_values_into_list(
-            dict(csv.reader(open(pos1directory + pos1kdafile, 'r', encoding="utf-8", newline=''))))
-        kda2 = process_dict_values_into_list(
-            dict(csv.reader(open(pos2directory + pos2kdafile, 'r', encoding="utf-8", newline=''))))
-        kda3 = process_dict_values_into_list(
-            dict(csv.reader(open(pos3directory + pos3kdafile, 'r', encoding="utf-8", newline=''))))
-        kda4 = process_dict_values_into_list(
-            dict(csv.reader(open(pos4directory + pos4kdafile, 'r', encoding="utf-8", newline=''))))
-        kda5 = process_dict_values_into_list(
-            dict(csv.reader(open(pos5directory + pos5kdafile, 'r', encoding="utf-8", newline=''))))
+        self.kda_data = {     
+          'kda1' : process_dict_values_into_list(
+              dict(csv.reader(open(pos1directory + pos1kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda2' : process_dict_values_into_list(
+              dict(csv.reader(open(pos2directory + pos2kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda3' : process_dict_values_into_list(
+              dict(csv.reader(open(pos3directory + pos3kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda4' : process_dict_values_into_list(
+              dict(csv.reader(open(pos4directory + pos4kdafile, 'r', encoding="utf-8", newline='')))),
+          'kda5' : process_dict_values_into_list(
+              dict(csv.reader(open(pos5directory + pos5kdafile, 'r', encoding="utf-8", newline=''))))
+        }
 
-        fantasy1 = process_dict_values_into_list(
-            dict(csv.reader(open(pos1directory + pos1fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy2 = process_dict_values_into_list(
-            dict(csv.reader(open(pos2directory + pos2fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy3 = process_dict_values_into_list(
-            dict(csv.reader(open(pos3directory + pos3fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy4 = process_dict_values_into_list(
-            dict(csv.reader(open(pos4directory + pos4fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy5 = process_dict_values_into_list(
-            dict(csv.reader(open(pos5directory + pos5fantasyfile, 'r', encoding="utf-8", newline=''))))
+        self.fantasy_data = {
+          'fantasy1' : process_dict_values_into_list(
+              dict(csv.reader(open(pos1directory + pos1fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy2' : process_dict_values_into_list(
+              dict(csv.reader(open(pos2directory + pos2fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy3' : process_dict_values_into_list(
+              dict(csv.reader(open(pos3directory + pos3fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy4' : process_dict_values_into_list(
+              dict(csv.reader(open(pos4directory + pos4fantasyfile, 'r', encoding="utf-8", newline='')))),
+          'fantasy5' : process_dict_values_into_list(
+              dict(csv.reader(open(pos5directory + pos5fantasyfile, 'r', encoding="utf-8", newline=''))))
+        }
 
         # Iterate through each stat and for each pos to find duplicates
         # If the role is changed from what was originally parsed, add them to the new roles dictionary and delete old
@@ -201,8 +227,8 @@ class Rd2lStats:
         gpm_player_set = {}
         user_choices = []
         for index, gpmdict in enumerate(
-                [copy.deepcopy(gpm1current), copy.deepcopy(gpm2current), copy.deepcopy(gpm3current), copy.deepcopy(gpm4current),
-                 copy.deepcopy(gpm5current)]):
+                [copy.deepcopy(self.gpmcurrent_data['gpm1']), copy.deepcopy(self.gpmcurrent_data['gpm2']), copy.deepcopy(self.gpmcurrent_data['gpm3']), copy.deepcopy(self.gpmcurrent_data['gpm4']),
+                 copy.deepcopy(self.gpmcurrent_data['gpm5'])]):
             for player, gpm in copy.deepcopy(gpmdict).items():
                 if player in gpm_player_set:
                     print("-- Player GPM: {} found in {} and {} -- ".format(player, gpm_player_set[player], index + 1))
@@ -216,117 +242,117 @@ class Rd2lStats:
                                 cumulative = gpm_value_set[player][0] * gpm_value_set[player][1]
                                 matches = gpm_value_set[player][1] + gpm[1]
                                 evalList = [(cumulative + (gpm[0] * gpm[1])) / matches, matches]
-                                gpm1[player] = evalList
+                                self.gpm_data['gpm1'][player] = evalList
                                 if index + 1 == 1:
                                     if gpm_player_set[player] == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if gpm_player_set[player] == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if gpm_player_set[player] == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if gpm_player_set[player] == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                                 elif gpm_player_set[player] == 1:
                                     if index + 1 == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if index + 1 == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if index + 1 == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if index + 1 == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                             elif uinput == 2:
                                 cumulative = gpm_value_set[player][0] * gpm_value_set[player][1]
                                 matches = gpm_value_set[player][1] + gpm[1]
                                 evalList = [(cumulative + (gpm[0] * gpm[1])) / matches, matches]
-                                gpm2[player] = evalList
+                                self.gpm_data['gpm2'][player] = evalList
                                 if index + 1 == 2:
                                     if gpm_player_set[player] == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                                     if gpm_player_set[player] == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if gpm_player_set[player] == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if gpm_player_set[player] == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                                 elif gpm_player_set[player] == 2:
                                     if index + 1 == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                                     if index + 1 == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if index + 1 == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if index + 1 == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                             elif uinput == 3:
                                 cumulative = gpm_value_set[player][0] * gpm_value_set[player][1]
                                 matches = gpm_value_set[player][1] + gpm[1]
                                 evalList = [(cumulative + (gpm[0] * gpm[1])) / matches, matches]
-                                gpm3[player] = evalList
+                                self.gpm_data['gpm3'][player] = evalList
                                 if index + 1 == 3:
                                     if gpm_player_set[player] == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if gpm_player_set[player] == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                                     if gpm_player_set[player] == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if gpm_player_set[player] == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                                 elif gpm_player_set[player] == 3:
                                     if index + 1 == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if index + 1 == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                                     if index + 1 == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if index + 1 == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                             elif uinput == 4:
                                 cumulative = gpm_value_set[player][0] * gpm_value_set[player][1]
                                 matches = gpm_value_set[player][1] + gpm[1]
                                 evalList = [(cumulative + (gpm[0] * gpm[1])) / matches, matches]
-                                gpm4[player] = evalList
+                                self.gpm_data['gpm4'][player] = evalList
                                 if index + 1 == 4:
                                     if gpm_player_set[player] == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if gpm_player_set[player] == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if gpm_player_set[player] == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                                     if gpm_player_set[player] == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                                 elif gpm_player_set[player] == 4:
                                     if index + 1 == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if index + 1 == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if index + 1 == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                                     if index + 1 == 5:
-                                        gpm5.pop(player)
+                                        self.gpm_data['gpm5'].pop(player)
                             elif uinput == 5:
                                 cumulative = gpm_value_set[player][0] * gpm_value_set[player][1]
                                 matches = gpm_value_set[player][1] + gpm[1]
                                 evalList = [(cumulative + (gpm[0] * gpm[1])) / matches, matches]
-                                gpm5[player] = evalList
+                                self.gpm_data['gpm5'][player] = evalList
                                 if index + 1 == 5:
                                     if gpm_player_set[player] == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if gpm_player_set[player] == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if gpm_player_set[player] == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if gpm_player_set[player] == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                                 elif gpm_player_set[player] == 5:
                                     if index + 1 == 2:
-                                        gpm2.pop(player)
+                                        self.gpm_data['gpm2'].pop(player)
                                     if index + 1 == 3:
-                                        gpm3.pop(player)
+                                        self.gpm_data['gpm3'].pop(player)
                                     if index + 1 == 4:
-                                        gpm4.pop(player)
+                                        self.gpm_data['gpm4'].pop(player)
                                     if index + 1 == 1:
-                                        gpm1.pop(player)
+                                        self.gpm_data['gpm1'].pop(player)
                             elif uinput == 0:
                                 print("Keeping both roles' stats")
                             else:
@@ -344,8 +370,8 @@ class Rd2lStats:
         kda_player_set = {}
         counter = -1
         for index, kdadict in enumerate(
-                [copy.deepcopy(kda1current), copy.deepcopy(kda2current), copy.deepcopy(kda3current), copy.deepcopy(kda4current),
-                 copy.deepcopy(kda5current)]):
+                [copy.deepcopy(self.kdacurrent_data['kda1']), copy.deepcopy(self.kdacurrent_data['kda2']), copy.deepcopy(self.kdacurrent_data['kda3']), copy.deepcopy(self.kdacurrent_data['kda4']),
+                 copy.deepcopy(self.kdacurrent_data['kda5'])]):
 
             for player, kda in copy.deepcopy(kdadict).items():
                 if player in kda_player_set:
@@ -355,117 +381,117 @@ class Rd2lStats:
                             cumulative = kda_value_set[player][0] * kda_value_set[player][1]
                             matches = kda_value_set[player][1] + kda[1]
                             evalList = [(cumulative + (kda[0] * kda[1])) / matches, matches]
-                            kda1[player] = evalList
+                            self.kda_data['kda1'][player] = evalList
                             if index + 1 == 1:
                                 if kda_player_set[player] == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if kda_player_set[player] == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if kda_player_set[player] == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if kda_player_set[player] == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                             elif kda_player_set[player] == 1:
                                 if index + 1 == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if index + 1 == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if index + 1 == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if index + 1 == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                         elif user_choices[counter] == 2:
                             cumulative = kda_value_set[player][0] * kda_value_set[player][1]
                             matches = kda_value_set[player][1] + kda[1]
                             evalList = [(cumulative + (kda[0] * kda[1])) / matches, matches]
-                            kda2[player] = evalList
+                            self.kda_data['kda2'][player] = evalList
                             if index + 1 == 2:
                                 if kda_player_set[player] == 1:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                                 if kda_player_set[player] == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if kda_player_set[player] == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if kda_player_set[player] == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                             elif kda_player_set[player] == 2:
                                 if index + 1 == 1:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                                 if index + 1 == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if index + 1 == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if index + 1 == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                         elif user_choices[counter] == 3:
                             cumulative = kda_value_set[player][0] * kda_value_set[player][1]
                             matches = kda_value_set[player][1] + kda[1]
                             evalList = [(cumulative + (kda[0] * kda[1])) / matches, matches]
-                            kda3[player] = evalList
+                            self.kda_data['kda3'][player] = evalList
                             if index + 1 == 3:
                                 if kda_player_set[player] == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if kda_player_set[player] == 1:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                                 if kda_player_set[player] == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if kda_player_set[player] == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                             elif kda_player_set[player] == 3:
                                 if index + 1 == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if index + 1 == 1:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                                 if index + 1 == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if index + 1 == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                         elif user_choices[counter] == 4:
                             cumulative = kda_value_set[player][0] * kda_value_set[player][1]
                             matches = kda_value_set[player][1] + kda[1]
                             evalList = [(cumulative + (kda[0] * kda[1])) / matches, matches]
-                            kda4[player] = evalList
+                            self.kda_data['kda4'][player] = evalList
                             if index + 1 == 4:
                                 if kda_player_set[player] == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if kda_player_set[player] == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if kda_player_set[player] == 1:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                                 if kda_player_set[player] == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                             elif kda_player_set[player] == 4:
                                 if index + 1 == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if index + 1 == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if index + 1 == 1:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                                 if index + 1 == 5:
-                                    kda5.pop(player)
+                                    self.kda_data['kda5'].pop(player)
                         elif user_choices[counter] == 5:
                             cumulative = kda_value_set[player][0] * kda_value_set[player][1]
                             matches = kda_value_set[player][1] + kda[1]
                             evalList = [(cumulative + (kda[0] * kda[1])) / matches, matches]
-                            kda5[player] = evalList
+                            self.kda_data['kda5'][player] = evalList
                             if index + 1 == 5:
                                 if kda_player_set[player] == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if kda_player_set[player] == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if kda_player_set[player] == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if kda_player_set[player] == 1:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                             elif kda_player_set[player] == 5:
                                 if index + 1 == 2:
-                                    kda2.pop(player)
+                                    self.kda_data['kda2'].pop(player)
                                 if index + 1 == 3:
-                                    kda3.pop(player)
+                                    self.kda_data['kda3'].pop(player)
                                 if index + 1 == 4:
-                                    kda4.pop(player)
+                                    self.kda_data['kda4'].pop(player)
                                 if index + 1 == 5:
-                                    kda1.pop(player)
+                                    self.kda_data['kda1'].pop(player)
                         elif user_choices[counter] == 0:
                             print("Keeping both roles' stats")
                         else:
@@ -483,8 +509,8 @@ class Rd2lStats:
         fantasy_player_set = {}
         counter = -1
         for index, fantasydict in enumerate(
-                [copy.deepcopy(fantasy1current), copy.deepcopy(fantasy2current), copy.deepcopy(fantasy3current), copy.deepcopy(fantasy4current),
-                 copy.deepcopy(fantasy5current)]):
+                [copy.deepcopy(self.fantasycurrent_data['fantasy1']), copy.deepcopy(self.fantasycurrent_data['fantasy2']), copy.deepcopy(self.fantasycurrent_data['fantasy3']), 
+                 copy.deepcopy(self.fantasycurrent_data['fantasy4']), copy.deepcopy(self.fantasycurrent_data['fantasy5'])]):
 
             for player, fantasy in copy.deepcopy(fantasydict).items():
                 if player in fantasy_player_set:
@@ -493,117 +519,117 @@ class Rd2lStats:
                         cumulative = fantasy_value_set[player][0] * fantasy_value_set[player][1]
                         matches = fantasy_value_set[player][1] + fantasy[1]
                         evalList = [(cumulative + (fantasy[0] * fantasy[1])) / matches, matches]
-                        fantasy1[player] = evalList
+                        self.fantasy_data['fantasy1'][player] = evalList
                         if index + 1 == 1:
                             if fantasy_player_set[player] == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if fantasy_player_set[player] == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if fantasy_player_set[player] == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if fantasy_player_set[player] == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                         elif fantasy_player_set[player] == 1:
                             if index + 1 == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if index + 1 == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if index + 1 == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if index + 1 == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                     elif user_choices[counter] == 2:
                         cumulative = fantasy_value_set[player][0] * fantasy_value_set[player][1]
                         matches = fantasy_value_set[player][1] + fantasy[1]
                         evalList = [(cumulative + (fantasy[0] * fantasy[1])) / matches, matches]
-                        fantasy2[player] = evalList
+                        self.fantasy_data['fantasy2'][player] = evalList
                         if index + 1 == 2:
                             if fantasy_player_set[player] == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                             if fantasy_player_set[player] == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if fantasy_player_set[player] == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if fantasy_player_set[player] == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                         elif fantasy_player_set[player] == 2:
                             if index + 1 == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                             if index + 1 == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if index + 1 == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if index + 1 == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                     elif user_choices[counter] == 3:
                         cumulative = fantasy_value_set[player][0] * fantasy_value_set[player][1]
                         matches = fantasy_value_set[player][1] + fantasy[1]
                         evalList = [(cumulative + (fantasy[0] * fantasy[1])) / matches, matches]
-                        fantasy3[player] = evalList
+                        self.fantasy_data['fantasy3'][player] = evalList
                         if index + 1 == 3:
                             if fantasy_player_set[player] == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if fantasy_player_set[player] == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                             if fantasy_player_set[player] == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if fantasy_player_set[player] == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                         elif fantasy_player_set[player] == 3:
                             if index + 1 == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if index + 1 == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                             if index + 1 == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if index + 1 == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                     elif user_choices[counter] == 4:
                         cumulative = fantasy_value_set[player][0] * fantasy_value_set[player][1]
                         matches = fantasy_value_set[player][1] + fantasy[1]
                         evalList = [(cumulative + (fantasy[0] * fantasy[1])) / matches, matches]
-                        fantasy4[player] = evalList
+                        self.fantasy_data['fantasy4'][player] = evalList
                         if index + 1 == 4:
                             if fantasy_player_set[player] == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if fantasy_player_set[player] == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if fantasy_player_set[player] == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                             if fantasy_player_set[player] == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                         elif fantasy_player_set[player] == 4:
                             if index + 1 == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if index + 1 == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if index + 1 == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                             if index + 1 == 5:
-                                fantasy5.pop(player)
+                                self.fantasy_data['fantasy5'].pop(player)
                     elif user_choices[counter] == 5:
                         cumulative = fantasy_value_set[player][0] * fantasy_value_set[player][1]
                         matches = fantasy_value_set[player][1] + fantasy[1]
                         evalList = [(cumulative + (fantasy[0] * fantasy[1])) / matches, matches]
-                        fantasy5[player] = evalList
+                        self.fantasy_data['fantasy5'][player] = evalList
                         if index + 1 == 5:
                             if fantasy_player_set[player] == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if fantasy_player_set[player] == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if fantasy_player_set[player] == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if fantasy_player_set[player] == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                         elif fantasy_player_set[player] == 5:
                             if index + 1 == 2:
-                                fantasy2.pop(player)
+                                self.fantasy_data['fantasy2'].pop(player)
                             if index + 1 == 3:
-                                fantasy3.pop(player)
+                                self.fantasy_data['fantasy3'].pop(player)
                             if index + 1 == 4:
-                                fantasy4.pop(player)
+                                self.fantasy_data['fantasy4'].pop(player)
                             if index + 1 == 1:
-                                fantasy1.pop(player)
+                                self.fantasy_data['fantasy1'].pop(player)
                     elif user_choices[counter]  == 0:
                         print("Keeping both roles stats")
                     else:
@@ -613,11 +639,11 @@ class Rd2lStats:
                     fantasy_player_set[player] = index + 1
                     fantasy_value_set[player] = fantasy
 
-        write_to_pos_based_csv_files(gpm1, kda1, fantasy1,
-                                     gpm2, kda2, fantasy2,
-                                     gpm3, kda3, fantasy3,
-                                     gpm4, kda4, fantasy4,
-                                     gpm5, kda5, fantasy5)
+        write_to_pos_based_csv_files(self.gpm_data['gpm1'], self.kda_data['kda1'], self.fantasy_data['fantasy1'],
+                                     self.gpm_data['gpm2'], self.kda_data['kda2'], self.fantasy_data['fantasy2'],
+                                     self.gpm_data['gpm3'], self.kda_data['kda3'], self.fantasy_data['fantasy3'],
+                                     self.gpm_data['gpm4'], self.kda_data['kda4'], self.fantasy_data['fantasy4'],
+                                     self.gpm_data['gpm5'], self.kda_data['kda5'], self.fantasy_data['fantasy5'])
 
         print("No more duplicates found. Exiting...")
         return
@@ -626,68 +652,68 @@ class Rd2lStats:
     def swap_players(self):
 
         # TODO: Improve data structure used to be a single object
-        gpm1 = process_dict_values_into_list(
+        self.gpm_data['gpm1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1directory + pos1gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm2 = process_dict_values_into_list(
+        self.gpm_data['gpm2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2directory + pos2gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm3 = process_dict_values_into_list(
+        self.gpm_data['gpm3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3directory + pos3gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm4 = process_dict_values_into_list(
+        self.gpm_data['gpm4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4directory + pos4gpmfile, 'r', encoding="utf-8", newline=''))))
-        gpm5 = process_dict_values_into_list(
+        self.gpm_data['gpm5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5directory + pos5gpmfile, 'r', encoding="utf-8", newline=''))))
 
-        kda1 = process_dict_values_into_list(
+        self.kda_data['kda1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1directory + pos1kdafile, 'r', encoding="utf-8", newline=''))))
-        kda2 = process_dict_values_into_list(
+        self.kda_data['kda2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2directory + pos2kdafile, 'r', encoding="utf-8", newline=''))))
-        kda3 = process_dict_values_into_list(
+        self.kda_data['kda3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3directory + pos3kdafile, 'r', encoding="utf-8", newline=''))))
-        kda4 = process_dict_values_into_list(
+        self.kda_data['kda4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4directory + pos4kdafile, 'r', encoding="utf-8", newline=''))))
-        kda5 = process_dict_values_into_list(
+        self.kda_data['kda5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5directory + pos5kdafile, 'r', encoding="utf-8", newline=''))))
 
-        fantasy1 = process_dict_values_into_list(
+        self.fantasy_data['fantasy1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1directory + pos1fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy2 = process_dict_values_into_list(
+        self.fantasy_data['fantasy2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2directory + pos2fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy3 = process_dict_values_into_list(
+        self.fantasy_data['fantasy3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3directory + pos3fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy4 = process_dict_values_into_list(
+        self.fantasy_data['fantasy4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4directory + pos4fantasyfile, 'r', encoding="utf-8", newline=''))))
-        fantasy5 = process_dict_values_into_list(
+        self.fantasy_data['fantasy5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5directory + pos5fantasyfile, 'r', encoding="utf-8", newline=''))))
 
         player1, player2 = input("Enter two players ID's to swap roles").split()
 
-        dict1 = find_player_in_dictionaries(player1, gpm1, gpm2, gpm3, gpm4, gpm5)
-        dict2 = find_player_in_dictionaries(player2, gpm1, gpm2, gpm3, gpm4, gpm5)
+        dict1 = find_player_in_dictionaries(player1, self.gpm_data)
+        dict2 = find_player_in_dictionaries(player2, self.gpm_data)
         temp = dict1.pop(player1)
         dict2[player1] = temp
         temp = dict2.pop(player2)
         dict1[player2] = temp
 
-        dict1 = find_player_in_dictionaries(player1, kda1, kda2, kda3, kda4, kda5)
-        dict2 = find_player_in_dictionaries(player2, kda1, kda2, kda3, kda4, kda5)
+        dict1 = find_player_in_dictionaries(player1, self.kda_data)
+        dict2 = find_player_in_dictionaries(player2, self.kda_data)
         temp = dict1.pop(player1)
         dict2[player1] = temp
         temp = dict2.pop(player2)
         dict1[player2] = temp
 
-        dict1 = find_player_in_dictionaries(player1, fantasy1, fantasy2, fantasy3, fantasy4, fantasy5)
-        dict2 = find_player_in_dictionaries(player2, fantasy1, fantasy2, fantasy3, fantasy4, fantasy5)
+        dict1 = find_player_in_dictionaries(player1, self.fantasy_data)
+        dict2 = find_player_in_dictionaries(player2, self.fantasy_data)
         temp = dict1.pop(player1)
         dict2[player1] = temp
         temp = dict2.pop(player2)
         dict1[player2] = temp
 
 
-        write_to_pos_based_csv_files(gpm1, kda1, fantasy1,
-                                     gpm2, kda2, fantasy2,
-                                     gpm3, kda3, fantasy3,
-                                     gpm4, kda4, fantasy4,
-                                     gpm5, kda5, fantasy5)
+        write_to_pos_based_csv_files(self.gpm_data['gpm1'], self.kda_data['kda1'], self.fantasy_data['fantasy1'],
+                                     self.gpm_data['gpm2'], self.kda_data['kda2'], self.fantasy_data['fantasy2'],
+                                     self.gpm_data['gpm3'], self.kda_data['kda3'], self.fantasy_data['fantasy3'],
+                                     self.gpm_data['gpm4'], self.kda_data['kda4'], self.fantasy_data['fantasy4'],
+                                     self.gpm_data['gpm5'], self.kda_data['kda5'], self.fantasy_data['fantasy5'])
 
         print("Swapped both players successfully")
         return
@@ -695,72 +721,72 @@ class Rd2lStats:
     # Function that calculates stats for current week, adds them to the cumulative stats for the season
     def generate_stats(self):
         # TODO: Create function that can be reused
-        gpm1 = process_dict_values_into_list(
+        self.gpm_data['gpm1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1directory + pos1gpmfile, 'r+', encoding="utf-8", newline=''))))
-        gpm2 = process_dict_values_into_list(
+        self.gpm_data['gpm2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2directory + pos2gpmfile, 'r+', encoding="utf-8", newline=''))))
-        gpm3 = process_dict_values_into_list(
+        self.gpm_data['gpm3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3directory + pos3gpmfile, 'r+', encoding="utf-8", newline=''))))
-        gpm4 = process_dict_values_into_list(
+        self.gpm_data['gpm4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4directory + pos4gpmfile, 'r+', encoding="utf-8", newline=''))))
-        gpm5 = process_dict_values_into_list(
+        self.gpm_data['gpm5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5directory + pos5gpmfile, 'r+', encoding="utf-8", newline=''))))
 
-        kda1 = process_dict_values_into_list(
+        self.kda_data['kda1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1directory + pos1kdafile, 'r+', encoding="utf-8", newline=''))))
-        kda2 = process_dict_values_into_list(
+        self.kda_data['kda2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2directory + pos2kdafile, 'r+', encoding="utf-8", newline=''))))
-        kda3 = process_dict_values_into_list(
+        self.kda_data['kda3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3directory + pos3kdafile, 'r+', encoding="utf-8", newline=''))))
-        kda4 = process_dict_values_into_list(
+        self.kda_data['kda4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4directory + pos4kdafile, 'r+', encoding="utf-8", newline=''))))
-        kda5 = process_dict_values_into_list(
+        self.kda_data['kda5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5directory + pos5kdafile, 'r+', encoding="utf-8", newline=''))))
 
-        fantasy1 = process_dict_values_into_list(
+        self.fantasy_data['fantasy1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1directory + pos1fantasyfile, 'r+', encoding="utf-8", newline=''))))
-        fantasy2 = process_dict_values_into_list(
+        self.fantasy_data['fantasy2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2directory + pos2fantasyfile, 'r+', encoding="utf-8", newline=''))))
-        fantasy3 = process_dict_values_into_list(
+        self.fantasy_data['fantasy3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3directory + pos3fantasyfile, 'r+', encoding="utf-8", newline=''))))
-        fantasy4 = process_dict_values_into_list(
+        self.fantasy_data['fantasy4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4directory + pos4fantasyfile, 'r+', encoding="utf-8", newline=''))))
-        fantasy5 = process_dict_values_into_list(
+        self.fantasy_data['fantasy5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5directory + pos5fantasyfile, 'r+', encoding="utf-8", newline=''))))
 
         # Current week stats
 
-        gpm1current = process_dict_values_into_list(
+        self.gpmcurrent_data['gpm1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1currentdirectory + pos1gpmfile, 'w+', encoding="utf-8", newline=''))))
-        gpm2current = process_dict_values_into_list(
+        self.gpmcurrent_data['gpm2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2currentdirectory + pos2gpmfile, 'w+', encoding="utf-8", newline=''))))
-        gpm3current = process_dict_values_into_list(
+        self.gpmcurrent_data['gpm3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3currentdirectory + pos3gpmfile, 'w+', encoding="utf-8", newline=''))))
-        gpm4current = process_dict_values_into_list(
+        self.gpmcurrent_data['gpm4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4currentdirectory + pos4gpmfile, 'w+', encoding="utf-8", newline=''))))
-        gpm5current = process_dict_values_into_list(
+        self.gpmcurrent_data['gpm5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5currentdirectory + pos5gpmfile, 'w+', encoding="utf-8", newline=''))))
 
-        kda1current = process_dict_values_into_list(
+        self.kdacurrent_data['kda1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1currentdirectory + pos1kdafile, 'w+', encoding="utf-8", newline=''))))
-        kda2current = process_dict_values_into_list(
+        self.kdacurrent_data['kda2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2currentdirectory + pos2kdafile, 'w+', encoding="utf-8", newline=''))))
-        kda3current = process_dict_values_into_list(
+        self.kdacurrent_data['kda3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3currentdirectory + pos3kdafile, 'w+', encoding="utf-8", newline=''))))
-        kda4current = process_dict_values_into_list(
+        self.kdacurrent_data['kda4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4currentdirectory + pos4kdafile, 'w+', encoding="utf-8", newline=''))))
-        kda5current = process_dict_values_into_list(
+        self.kdacurrent_data['kda5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5currentdirectory + pos5kdafile, 'w+', encoding="utf-8", newline=''))))
 
-        fantasy1current = process_dict_values_into_list(
+        self.fantasycurrent_data['fantasy1'] = process_dict_values_into_list(
             dict(csv.reader(open(pos1currentdirectory + pos1fantasyfile, 'w+', encoding="utf-8", newline=''))))
-        fantasy2current = process_dict_values_into_list(
+        self.fantasycurrent_data['fantasy2'] = process_dict_values_into_list(
             dict(csv.reader(open(pos2currentdirectory + pos2fantasyfile, 'w+', encoding="utf-8", newline=''))))
-        fantasy3current = process_dict_values_into_list(
+        self.fantasycurrent_data['fantasy3'] = process_dict_values_into_list(
             dict(csv.reader(open(pos3currentdirectory + pos3fantasyfile, 'w+', encoding="utf-8", newline=''))))
-        fantasy4current = process_dict_values_into_list(
+        self.fantasycurrent_data['fantasy4'] = process_dict_values_into_list(
             dict(csv.reader(open(pos4currentdirectory + pos4fantasyfile, 'w+', encoding="utf-8", newline=''))))
-        fantasy5current = process_dict_values_into_list(
+        self.fantasycurrent_data['fantasy5'] = process_dict_values_into_list(
             dict(csv.reader(open(pos5currentdirectory + pos5fantasyfile, 'w+', encoding="utf-8", newline=''))))
 
         matches_size = len(match_ids)
@@ -768,17 +794,21 @@ class Rd2lStats:
             response = requests.get(opendota_api_matches_url + matchid)
             json_data = json.loads(response.text)
 
-            radiant_pos_1 = None
-            radiant_pos_2 = None
-            radiant_pos_3 = None
-            radiant_pos_4 = None
-            radiant_pos_5 = None
+            radiant_players = {
+              'pos1' : None,
+              'pos2' : None,
+              'pos3' : None,
+              'pos4' : None,
+              'pos5' : None
+            }
 
-            dire_pos_1 = None
-            dire_pos_2 = None
-            dire_pos_3 = None
-            dire_pos_4 = None
-            dire_pos_5 = None
+            dire_players = {
+              'pos1' : None,
+              'pos2' : None,
+              'pos3' : None,
+              'pos4' : None,
+              'pos5' : None
+            }
 
             # Sometimes Open dota API can have 500 status, in that case break out
             try:
@@ -796,455 +826,191 @@ class Rd2lStats:
                     if "lane" not in player:
                         continue
                     if player['lane'] == 1:
-                        if radiant_pos_1 is None:
-                            radiant_pos_1 = player
+                        if radiant_players['pos1'] is None:
+                            radiant_players['pos1'] = player
                         else:
-                            if radiant_pos_1['lh_t'][11] < player["lh_t"][11]:
-                                radiant_pos_5 = radiant_pos_1
-                                radiant_pos_1 = player
+                            if radiant_players['pos1']['lh_t'][11] < player["lh_t"][11]:
+                                radiant_players['pos5'] = radiant_players['pos1']
+                                radiant_players['pos1'] = player
                             else:
-                                radiant_pos_5 = player
+                                radiant_players['pos5'] = player
                     elif player['lane'] == 2:
-                        if radiant_pos_2 is None:
-                            radiant_pos_2 = player
-                        elif radiant_pos_2['lh_t'][11] < player['lh_t'][11]:
-                            if radiant_pos_4 is None:
-                                radiant_pos_4 = radiant_pos_2
-                                radiant_pos_2 = player
-                            elif radiant_pos_4 is not None:
-                                if radiant_pos_4['lh_t'][11] < radiant_pos_2['lh_t'][11]:
-                                    radiant_pos_5 = radiant_pos_4
-                                    radiant_pos_4 = radiant_pos_2
-                                    radiant_pos_2 = player
+                        if radiant_players['pos2'] is None:
+                            radiant_players['pos2'] = player
+                        elif radiant_players['pos2']['lh_t'][11] < player['lh_t'][11]:
+                            if radiant_players['pos4'] is None:
+                                radiant_players['pos4'] = radiant_players['pos2']
+                                radiant_players['pos2'] = player
+                            elif radiant_players['pos4'] is not None:
+                                if radiant_players['pos4']['lh_t'][11] < radiant_players['pos2']['lh_t'][11]:
+                                    radiant_players['pos5'] = radiant_players['pos4']
+                                    radiant_players['pos4'] = radiant_players['pos2']
+                                    radiant_players['pos2'] = player
                                 else:
-                                    radiant_pos_5 = radiant_pos_2
-                                    radiant_pos_2 = player
-                            elif radiant_pos_5 is not None:
-                                if radiant_pos_5['lh_t'][11] > radiant_pos_2['lh_t'][11]:
-                                    radiant_pos_4 = radiant_pos_5
-                                    radiant_pos_5 = radiant_pos_2
+                                    radiant_players['pos5'] = radiant_players['pos2']
+                                    radiant_players['pos2'] = player
+                            elif radiant_players['pos5'] is not None:
+                                if radiant_players['pos5']['lh_t'][11] > radiant_players['pos2']['lh_t'][11]:
+                                    radiant_players['pos4'] = radiant_players['pos5']
+                                    radiant_players['pos5'] = radiant_players['pos2']
                             else:
-                                radiant_pos_4 = radiant_pos_2
-                                radiant_pos_2 = player
+                                radiant_players['pos4'] = radiant_players['pos2']
+                                radiant_players['pos2'] = player
                         else:
-                            radiant_pos_4 = player
+                            radiant_players['pos4'] = player
                     elif player['lane'] == 3:
-                        if radiant_pos_3 is None:
-                            radiant_pos_3 = player
+                        if radiant_players['pos3'] is None:
+                            radiant_players['pos3'] = player
                         else:
-                            if radiant_pos_3['lh_t'][11] < player['lh_t'][11]:
-                                radiant_pos_4 = radiant_pos_3
-                                radiant_pos_3 = player
+                            if radiant_players['pos3']['lh_t'][11] < player['lh_t'][11]:
+                                radiant_players['pos4'] = radiant_players['pos3']
+                                radiant_players['pos3'] = player
                             else:
-                                radiant_pos_4 = player
+                                radiant_players['pos4'] = player
                 else:
                     if "lane" not in player:
                         continue
                     if player['lane'] == 1:
-                        if dire_pos_3 is None:
-                            dire_pos_3 = player
+                        if dire_players['pos3'] is None:
+                            dire_players['pos3'] = player
                         else:
-                            if dire_pos_3['lh_t'][11] < player['lh_t'][11]:
-                                dire_pos_4 = dire_pos_3
-                                dire_pos_3 = player
+                            if dire_players['pos3']['lh_t'][11] < player['lh_t'][11]:
+                                dire_players['pos4'] = dire_players['pos3']
+                                dire_players['pos3'] = player
                             else:
-                                dire_pos_4 = player
+                                dire_players['pos4'] = player
                     elif player['lane'] == 2:
-                        if dire_pos_2 is None:
-                            dire_pos_2 = player
-                        elif dire_pos_2['lh_t'][11] < player['lh_t'][11]:
-                            if dire_pos_4 is None:
-                                dire_pos_4 = dire_pos_2
-                                dire_pos_2 = player
-                            elif dire_pos_4 is not None:
-                                if dire_pos_4['lh_t'][11] < dire_pos_2['lh_t'][11]:
-                                    dire_pos_5 = dire_pos_4
-                                    dire_pos_4 = dire_pos_2
-                                    dire_pos_2 = player
+                        if dire_players['pos2'] is None:
+                            dire_players['pos2'] = player
+                        elif dire_players['pos2']['lh_t'][11] < player['lh_t'][11]:
+                            if dire_players['pos4'] is None:
+                                dire_players['pos4'] = dire_players['pos2']
+                                dire_players['pos2'] = player
+                            elif dire_players['pos4'] is not None:
+                                if dire_players['pos4']['lh_t'][11] < dire_players['pos2']['lh_t'][11]:
+                                    dire_players['pos5'] = dire_players['pos4']
+                                    dire_players['pos4'] = dire_players['pos2']
+                                    dire_players['pos2'] = player
                                 else:
-                                    dire_pos_5 = dire_pos_2
-                                    dire_pos_2 = player
-                            elif dire_pos_5 is not None:
-                                if dire_pos_5['lh_t'][11] > dire_pos_2['lh_t'][11]:
-                                    dire_pos_4 = dire_pos_5
-                                    dire_pos_5 = dire_pos_2
+                                    dire_players['pos5'] = dire_players['pos2']
+                                    dire_players['pos2'] = player
+                            elif dire_players['pos5'] is not None:
+                                if dire_players['pos5']['lh_t'][11] > dire_players['pos2']['lh_t'][11]:
+                                    dire_players['pos4'] = dire_players['pos5']
+                                    dire_players['pos5'] = dire_players['pos2']
                             else:
-                                dire_pos_4 = dire_pos_2
-                                dire_pos_2 = player
+                                dire_players['pos4'] = dire_players['pos2']
+                                dire_players['pos2'] = player
                         else:
-                            dire_pos_4 = player
+                            dire_players['pos4'] = player
                     elif player['lane'] == 3:
-                        if dire_pos_1 is None:
-                            dire_pos_1 = player
+                        if dire_players['pos1'] is None:
+                            dire_players['pos1'] = player
                         else:
-                            if dire_pos_1['lh_t'][11] < player['lh_t'][11]:
-                                dire_pos_5 = dire_pos_1
-                                dire_pos_1 = player
+                            if dire_players['pos1']['lh_t'][11] < player['lh_t'][11]:
+                                dire_players['pos5'] = dire_players['pos1']
+                                dire_players['pos1'] = player
                             else:
-                                dire_pos_5 = player
+                                dire_players['pos5'] = player
 
             # For any unfilled pos (Maybe because they jungled???) Fill them in to remaining slot
             for index, each in enumerate(
-                    [radiant_pos_1, dire_pos_1, radiant_pos_2, dire_pos_2, radiant_pos_3, dire_pos_3, radiant_pos_4,
-                     dire_pos_4, radiant_pos_5, dire_pos_5]):
+                    [radiant_players['pos1'], dire_players['pos1'], radiant_players['pos2'], dire_players['pos2'], radiant_players['pos3'], dire_players['pos3'], radiant_players['pos4'],
+                     dire_players['pos4'], radiant_players['pos5'], dire_players['pos5']]):
                 if each is None:
                     diff = list_difference(json_data['players'],
-                                           [radiant_pos_1, dire_pos_1, radiant_pos_2, dire_pos_2, radiant_pos_3,
-                                            dire_pos_3,
-                                            radiant_pos_4, dire_pos_4, radiant_pos_5, dire_pos_5])
+                                           [radiant_players['pos1'], dire_players['pos1'], radiant_players['pos2'], dire_players['pos2'], radiant_players['pos3'],
+                                            dire_players['pos3'],
+                                            radiant_players['pos4'], dire_players['pos4'], radiant_players['pos5'], dire_players['pos5']])
                     if index == 0:
-                        radiant_pos_1 = diff[0]
+                        radiant_players['pos1'] = diff[0]
                     elif index == 1:
-                        dire_pos_1 = diff[0]
+                        dire_players['pos1'] = diff[0]
                     elif index == 2:
-                        radiant_pos_2 = diff[0]
+                        radiant_players['pos2'] = diff[0]
                     elif index == 3:
-                        dire_pos_2 = diff[0]
+                        dire_players['pos2'] = diff[0]
                     elif index == 4:
-                        radiant_pos_3 = diff[0]
+                        radiant_players['pos3'] = diff[0]
                     elif index == 5:
-                        dire_pos_3 = diff[0]
+                        dire_players['pos3'] = diff[0]
                     elif index == 6:
-                        radiant_pos_4 = diff[0]
+                        radiant_players['pos4'] = diff[0]
                     elif index == 7:
-                        dire_pos_4 = diff[0]
+                        dire_players['pos4'] = diff[0]
                     elif index == 8:
-                        radiant_pos_5 = diff[0]
+                        radiant_players['pos5'] = diff[0]
                     elif index == 9:
-                        dire_pos_5 = diff[0]
+                        dire_players['pos5'] = diff[0]
 
             # Parse response to add stat to each relevant dictionary based on role
             # TODO: Refactor to avoid code duplication
-            for player in [radiant_pos_1, dire_pos_1]:
-
-                if str(player["account_id"]) in gpm1current:
-                    if isinstance(gpm1current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm1current[str(player["account_id"])])
+            for i in range(1, 6): 
+                for player in [radiant_players['pos' + str(i)], dire_players['pos' + str(i)]]:
+                    if str(player["account_id"]) in self.gpmcurrent_data['gpm' + str(i)]:
+                        if isinstance(self.gpmcurrent_data['gpm' + str(i)][str(player["account_id"])], str):
+                            evalList = ast.literal_eval(self.gpmcurrent_data['gpm' + str(i)][str(player["account_id"])])
+                        else:
+                            evalList = self.gpmcurrent_data['gpm' + str(i)][str(player["account_id"])]
+                        self.gpmcurrent_data['gpm' + str(i)][str(player["account_id"])] = [
+                            ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
                     else:
-                        evalList = gpm1current[str(player["account_id"])]
-                    gpm1current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    gpm1current[str(player["account_id"])] = [player["gold_per_min"], 1]
+                        self.gpmcurrent_data['gpm' + str(i)][str(player["account_id"])] = [player["gold_per_min"], 1]
 
-                if str(player["account_id"]) in gpm1:
-                    if isinstance(gpm1[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm1[str(player["account_id"])])
+                    if str(player["account_id"]) in self.gpm_data['gpm' + str(i)]:
+                        if isinstance(self.gpm_data['gpm' + str(i)][str(player["account_id"])], str):
+                            evalList = ast.literal_eval(self.gpm_data['gpm' + str(i)][str(player["account_id"])])
+                        else:
+                            evalList = self.gpm_data['gpm' + str(i)][str(player["account_id"])]
+                        self.gpm_data['gpm' + str(i)][str(player["account_id"])] = [
+                            ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
                     else:
-                        evalList = gpm1[str(player["account_id"])]
-                    gpm1[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    gpm1[str(player["account_id"])] = [player["gold_per_min"], 1]
+                        self.gpm_data['gpm' + str(i)][str(player["account_id"])] = [player["gold_per_min"], 1]
 
-                if str(player["account_id"]) in kda1current:
-                    if isinstance(kda1current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda1current[str(player["account_id"])])
+                    if str(player["account_id"]) in self.kdacurrent_data['kda' + str(i)]:
+                        if isinstance(self.kdacurrent_data['kda' + str(i)][str(player["account_id"])], str):
+                            evalList = ast.literal_eval(self.kdacurrent_data['kda' + str(i)][str(player["account_id"])])
+                        else:
+                            evalList = self.kdacurrent_data['kda' + str(i)][str(player["account_id"])]
+                        self.kdacurrent_data['kda' + str(i)][str(player["account_id"])] = [
+                            ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1), evalList[1] + 1]
                     else:
-                        evalList = kda1current[str(player["account_id"])]
-                    kda1current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    kda1current[str(player["account_id"])] = [player["kda"], 1]
+                        self.kdacurrent_data['kda' + str(i)][str(player["account_id"])] = [player["kda"], 1]
 
-                if str(player["account_id"]) in kda1:
-                    if isinstance(kda1[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda1[str(player["account_id"])])
+                    if str(player["account_id"]) in self.kda_data['kda' + str(i)]:
+                        if isinstance(self.kda_data['kda' + str(i)][str(player["account_id"])], str):
+                            evalList = ast.literal_eval(self.kda_data['kda' + str(i)][str(player["account_id"])])
+                        else:
+                            evalList = self.kda_data['kda' + str(i)][str(player["account_id"])]
+                        self.kda_data['kda' + str(i)][str(player["account_id"])] = [
+                            ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1),
+                            evalList[1] + 1]
                     else:
-                        evalList = kda1[str(player["account_id"])]
-                    kda1[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    kda1[str(player["account_id"])] = [player["kda"], 1]
+                        self.kda_data['kda' + str(i)][str(player["account_id"])] = [player["kda"], 1]
 
-                if str(player["account_id"]) in fantasy1current:
-                    if isinstance(fantasy1current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy1current[str(player["account_id"])])
+                    if str(player["account_id"]) in self.fantasycurrent_data['fantasy' + str(i)]:
+                        if isinstance(self.fantasycurrent_data['fantasy' + str(i)][str(player["account_id"])], str):
+                            evalList = ast.literal_eval(self.fantasycurrent_data['fantasy' + str(i)][str(player["account_id"])])
+                        else:
+                            evalList = self.fantasycurrent_data['fantasy' + str(i)][str(player["account_id"])]
+                        self.fantasycurrent_data['fantasy' + str(i)][str(player["account_id"])] = [
+                            ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1), evalList[1] + 1]
                     else:
-                        evalList = fantasy1current[str(player["account_id"])]
-                    fantasy1current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    fantasy1current[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
+                        self.fantasycurrent_data['fantasy' + str(i)][str(player["account_id"])] = [self.get_fantasy_score(player), 1]
 
-                if str(player["account_id"]) in fantasy1:
-                    if isinstance(fantasy1[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy1[str(player["account_id"])])
+                    if str(player["account_id"]) in self.fantasy_data['fantasy' + str(i)]:
+                        if isinstance(self.fantasy_data['fantasy' + str(i)][str(player["account_id"])], str):
+                            evalList = ast.literal_eval(self.fantasy_data['fantasy' + str(i)][str(player["account_id"])])
+                        else:
+                            evalList = self.fantasy_data['fantasy' + str(i)][str(player["account_id"])]
+                        self.fantasy_data['fantasy' + str(i)][str(player["account_id"])] = [
+                            ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
+                            evalList[1] + 1]
                     else:
-                        evalList = fantasy1[str(player["account_id"])]
-                    fantasy1[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    try:
-                        fantasy1[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-                    except:
-                        print("Failed in getting fantasy score")
-
-            for player in [radiant_pos_2, dire_pos_2]:
-
-                if str(player["account_id"]) in gpm2current:
-                    if isinstance(gpm2current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm2current[str(player["account_id"])])
-                    else:
-                        evalList = gpm2current[str(player["account_id"])]
-                    gpm2current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    gpm2current[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in gpm2:
-                    if isinstance(gpm2[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm2[str(player["account_id"])])
-                    else:
-                        evalList = gpm2[str(player["account_id"])]
-                    gpm2[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    gpm2[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in kda2current:
-                    if isinstance(kda2current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda2current[str(player["account_id"])])
-                    else:
-                        evalList = kda2current[str(player["account_id"])]
-                    kda2current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    kda2current[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in kda2:
-                    if isinstance(kda2[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda2[str(player["account_id"])])
-                    else:
-                        evalList = kda2[str(player["account_id"])]
-                    kda2[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    kda2[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in fantasy2current:
-                    if isinstance(fantasy2current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy2current[str(player["account_id"])])
-                    else:
-                        evalList = fantasy2current[str(player["account_id"])]
-                    fantasy2current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy2current[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-
-                if str(player["account_id"]) in fantasy2:
-                    if isinstance(fantasy2[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy2[str(player["account_id"])])
-                    else:
-                        evalList = fantasy2[str(player["account_id"])]
-                    fantasy2[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy2[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-
-            for player in [radiant_pos_3, dire_pos_3]:
-
-                if str(player["account_id"]) in gpm3current:
-                    if isinstance(gpm3current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm3current[str(player["account_id"])])
-                    else:
-                        evalList = gpm3current[str(player["account_id"])]
-                    gpm3current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    gpm3current[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in gpm3:
-                    if isinstance(gpm3[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm3[str(player["account_id"])])
-                    else:
-                        evalList = gpm3[str(player["account_id"])]
-                    gpm3[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    gpm3[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in kda3current:
-                    if isinstance(kda3current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda3current[str(player["account_id"])])
-                    else:
-                        evalList = kda3current[str(player["account_id"])]
-                    kda3current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    kda3current[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in kda3:
-                    if isinstance(kda3[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda3[str(player["account_id"])])
-                    else:
-                        evalList = kda3[str(player["account_id"])]
-                    kda3[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    kda3[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in fantasy3current:
-                    if isinstance(fantasy3current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy3current[str(player["account_id"])])
-                    else:
-                        evalList = fantasy3current[str(player["account_id"])]
-                    fantasy3current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy3current[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-
-                if str(player["account_id"]) in fantasy3:
-                    if isinstance(fantasy3[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy3[str(player["account_id"])])
-                    else:
-                        evalList = fantasy3[str(player["account_id"])]
-                    fantasy3[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy3[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-
-            for player in [radiant_pos_4, dire_pos_4]:
-
-                if str(player["account_id"]) in gpm4current:
-                    if isinstance(gpm4current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm4current[str(player["account_id"])])
-                    else:
-                        evalList = gpm4current[str(player["account_id"])]
-                    gpm4current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    gpm4current[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in gpm4:
-                    if isinstance(gpm4[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm4[str(player["account_id"])])
-                    else:
-                        evalList = gpm4[str(player["account_id"])]
-                    gpm4[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    gpm4[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in kda4current:
-                    if isinstance(kda4current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda4current[str(player["account_id"])])
-                    else:
-                        evalList = kda4current[str(player["account_id"])]
-                    kda4current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    kda4current[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in kda4:
-                    if isinstance(kda4[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda4[str(player["account_id"])])
-                    else:
-                        evalList = kda4[str(player["account_id"])]
-                    kda4[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    kda4[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in fantasy4current:
-                    if isinstance(fantasy4current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy4current[str(player["account_id"])])
-                    else:
-                        evalList = fantasy4current[str(player["account_id"])]
-                    fantasy4current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy4current[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-
-                if str(player["account_id"]) in fantasy4:
-                    if isinstance(fantasy4[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy4[str(player["account_id"])])
-                    else:
-                        evalList = fantasy4[str(player["account_id"])]
-                    fantasy4[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy4[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-
-            for player in [radiant_pos_5, dire_pos_5]:
-
-                if str(player["account_id"]) in gpm5current:
-                    if isinstance(gpm5current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm5current[str(player["account_id"])])
-                    else:
-                        evalList = gpm5current[str(player["account_id"])]
-                    gpm5current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    gpm5current[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in gpm5:
-                    if isinstance(gpm5[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(gpm5[str(player["account_id"])])
-                    else:
-                        evalList = gpm5[str(player["account_id"])]
-                    gpm5[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["gold_per_min"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    gpm5[str(player["account_id"])] = [player["gold_per_min"], 1]
-
-                if str(player["account_id"]) in kda5current:
-                    if isinstance(kda5current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda5current[str(player["account_id"])])
-                    else:
-                        evalList = kda5current[str(player["account_id"])]
-                    kda5current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1), evalList[1] + 1]
-                else:
-                    kda5current[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in kda5:
-                    if isinstance(kda5[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(kda5[str(player["account_id"])])
-                    else:
-                        evalList = kda5[str(player["account_id"])]
-                    kda5[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + player["kda"]) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    kda5[str(player["account_id"])] = [player["kda"], 1]
-
-                if str(player["account_id"]) in fantasy5current:
-                    if isinstance(fantasy5current[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy5current[str(player["account_id"])])
-                    else:
-                        evalList = fantasy5current[str(player["account_id"])]
-                    fantasy5current[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy5current[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
-
-                if str(player["account_id"]) in fantasy5:
-                    if isinstance(fantasy5[str(player["account_id"])], str):
-                        evalList = ast.literal_eval(fantasy5[str(player["account_id"])])
-                    else:
-                        evalList = fantasy5[str(player["account_id"])]
-                    fantasy5[str(player["account_id"])] = [
-                        ((evalList[0] * evalList[1]) + self.get_fantasy_score(player)) / (evalList[1] + 1),
-                        evalList[1] + 1]
-                else:
-                    fantasy5[str(player["account_id"])] = [self.get_fantasy_score(player), 1]
+                        try:
+                            self.fantasy_data['fantasy' + str(i)][str(player["account_id"])] = [self.get_fantasy_score(player), 1]
+                        except:
+                            print("Failed in getting fantasy score")
 
             for player in json_data['players']:
                 if player['gold_per_min'] > self.highest_gpm_value:
@@ -1299,16 +1065,21 @@ class Rd2lStats:
                     self.highest_courier_player = player['account_id']
                     self.highest_courier_hero = player['hero_id']
                     self.highest_courier_match = dotabuff_url + str(json_data['match_id'])
+                if 'deaths' in player and player['deaths'] > self.highest_deaths_value:
+                    self.highest_deaths_value = player['deaths']
+                    self.highest_deaths_player = player['account_id']
+                    self.highest_deaths_hero = player['hero_id']
+                    self.highest_deaths_match = dotabuff_url + str(json_data['match_id'])
                 # if 'actions_per_min' in player and player['actions_per_min'] > self.highest_apm_value:
                 #     self.highest_apm_value = player['actions_per_min']
                 #     self.highest_apm_player = player['account_id']
                 #     self.highest_apm_hero = player['hero_id']
                 #     self.highest_apm_match = dotabuff_url + str(json_data['match_id'])
-            print("Processed match {} of {} with ID: {}".format(match_index, matches_size, matchid))
+            print("Processed match {} of {} with ID: {}".format(match_index + 1, matches_size, matchid))
 
         # Sleeping to avoid OpenDota API throttling
-        print("Sleeping for 60s...")
-        time.sleep(60)
+        #print("Sleeping for 60s...")
+        #time.sleep(60)
         response = requests.get(opendota_api_players_url + str(self.highest_gpm_player))
         json_data = json.loads(response.text)
 
@@ -1397,6 +1168,16 @@ class Rd2lStats:
             "match": self.highest_deward_match,
             "value": self.highest_deward_value}
 
+        response = requests.get(opendota_api_players_url + str(self.highest_deaths_player))
+        json_data = json.loads(response.text)
+        self.stats_leaders_dict["deaths"] = {
+            "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
+                     else json_data['profile']['personaname']),
+            "avatar": json_data['profile']['avatarmedium'],
+            "hero": self.highest_deaths_hero,
+            "match": self.highest_deaths_match,
+            "value": self.highest_deaths_value}
+
         # response = requests.get(opendota_api_players_url + str(self.highest_apm_player))
         # json_data = json.loads(response.text)
         # self.stats_leaders_dict["apm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
@@ -1416,7 +1197,17 @@ class Rd2lStats:
             "match": self.highest_courier_match,
             "value": self.highest_courier_value}
 
-        stats_leaders_file = open('rd2lstats/stats_leaders.csv', 'r+', encoding="utf-8", newline='')
+        response = requests.get(opendota_api_players_url + str(self.highest_deaths_player))
+        json_data = json.loads(response.text)
+        self.stats_leaders_dict["deaths"] = {
+            "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
+                     else json_data['profile']['personaname']), 
+            "avatar": json_data['profile']['avatarmedium'],
+            "hero": self.highest_deaths_hero,
+            "match": self.highest_deaths_match,
+            "value": self.highest_deaths_value}
+
+        stats_leaders_file = open('stats_leaders.csv', 'r+', encoding="utf-8", newline='')
         stats_leaders_file_writer = csv.writer(stats_leaders_file)
         for k, v in self.stats_leaders_dict.items():
             stats_leaders_file_writer.writerow([k, v])
@@ -1425,18 +1216,17 @@ class Rd2lStats:
         print("Generated stats leaders file.")
         print("Creating position based stat files...")
 
-        write_to_pos_based_csv_files_current_week(gpm1current, kda1current, fantasy1current,
-                                     gpm2current, kda2current, fantasy2current,
-                                     gpm3current, kda3current, fantasy3current,
-                                     gpm4current, kda4current, fantasy4current,
-                                     gpm5current, kda5current, fantasy5current)
+        write_to_pos_based_csv_files_current_week(self.gpmcurrent_data['gpm1'], self.kdacurrent_data['kda1'], self.fantasycurrent_data['fantasy1'],
+                                     self.gpmcurrent_data['gpm2'], self.kdacurrent_data['kda2'], self.fantasycurrent_data['fantasy2'],
+                                     self.gpmcurrent_data['gpm3'], self.kdacurrent_data['kda3'], self.fantasycurrent_data['fantasy3'],
+                                     self.gpmcurrent_data['gpm4'], self.kdacurrent_data['kda4'], self.fantasycurrent_data['fantasy4'],
+                                     self.gpmcurrent_data['gpm5'], self.kdacurrent_data['kda5'], self.fantasycurrent_data['fantasy5'])
 
-        write_to_pos_based_csv_files(gpm1, kda1, fantasy1,
-                                     gpm2, kda2, fantasy2,
-                                     gpm3, kda3, fantasy3,
-                                     gpm4, kda4, fantasy4,
-                                     gpm5, kda5, fantasy5)
-
+        write_to_pos_based_csv_files(self.gpm_data['gpm1'], self.kda_data['kda1'], self.fantasy_data['fantasy1'],
+                                     self.gpm_data['gpm2'], self.kda_data['kda2'], self.fantasy_data['fantasy2'],
+                                     self.gpm_data['gpm3'], self.kda_data['kda3'], self.fantasy_data['fantasy3'],
+                                     self.gpm_data['gpm4'], self.kda_data['kda4'], self.fantasy_data['fantasy4'],
+                                     self.gpm_data['gpm5'], self.kda_data['kda5'], self.fantasy_data['fantasy5'])
 
 rd2lstats = Rd2lStats()
 
@@ -1449,8 +1239,10 @@ async def on_ready():
 # Function invoked when user sends message
 @client.event
 async def on_message(message):
-
-    if message.author.id != admin_id:
+    if message.author.id not in ADMIN_IDS:
+        print(message.author.id)
+        print(ADMIN_IDS)
+        print('Not authorized to make commands!')
         return
 
     # Find duplicates for a single player across multiple roles
@@ -1506,7 +1298,7 @@ async def on_message(message):
             dict(csv.reader(open(pos5directory + pos5fantasyfile, 'r', encoding="utf-8", newline=''))))
 
         stats_leaders_dict = process_dict_values_into_list(
-            dict(csv.reader(open('rd2lstats\stats_leaders.csv', 'r', encoding="utf-8", newline=''))))
+            dict(csv.reader(open('stats_leaders.csv', 'r', encoding="utf-8", newline=''))))
 
         print('Finished processing stats files')
 
@@ -1515,546 +1307,177 @@ async def on_message(message):
         threshold_wrapper = lambda item: passes_role_threshold(item, games_played)
 
         # TODO: Add better names for embeds
-        embed = discord.Embed(title="Highest GPM", colour=discord.Colour(0x1),
+        embeds = {}
+        embeds[1] = discord.Embed(title="Highest GPM", colour=discord.Colour(0x1),
                               description=stats_leaders_dict['gpm']['name'])
-        embed.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['gpm']['hero'])))
-        embed.set_thumbnail(url=stats_leaders_dict['gpm']['avatar'])
-        embed.add_field(name="GPM", value=stats_leaders_dict['gpm']['value'])
-        embed.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["gpm"]["match"],
+        embeds[1].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['gpm']['hero'])))
+        embeds[1].set_thumbnail(url=stats_leaders_dict['gpm']['avatar'])
+        embeds[1].add_field(name="GPM", value=stats_leaders_dict['gpm']['value'])
+        embeds[1].add_field(name="MatchID", value="{}".format(stats_leaders_dict["gpm"]["match"],
                                                                 stats_leaders_dict["gpm"]["match"]))
 
         print('Processed Highest GPM')
 
-        embed2 = discord.Embed(title="Highest XPM", colour=discord.Colour(0x1),
+        embeds[2] = discord.Embed(title="Highest XPM", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['xpm']['name'])
-        embed2.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['xpm']['hero'])))
-        embed2.set_thumbnail(url=stats_leaders_dict['xpm']['avatar'])
-        embed2.add_field(name="XPM", value=stats_leaders_dict['xpm']['value'])
-        embed2.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["xpm"]["match"],
-                                                                 stats_leaders_dict["xpm"]["match"]))
+        embeds[2].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['xpm']['hero'])))
+        embeds[2].set_thumbnail(url=stats_leaders_dict['xpm']['avatar'])
+        embeds[2].add_field(name="XPM", value=stats_leaders_dict['xpm']['value'])
+        embeds[2].add_field(name="MatchID", value="{}".format(stats_leaders_dict["xpm"]["match"]))
 
         print('Processed Highest XPM')
 
-        embed3 = discord.Embed(title="Highest KDA", colour=discord.Colour(0x1),
+        embeds[3] = discord.Embed(title="Highest KDA", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['kda']['name'])
-        embed3.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['kda']['hero'])))
-        embed3.set_thumbnail(url=stats_leaders_dict['kda']['avatar'])
-        embed3.add_field(name="KDA", value=stats_leaders_dict['kda']['value'])
-        embed3.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["kda"]["match"],
-                                                                 stats_leaders_dict["kda"]["match"]))
+        embeds[3].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['kda']['hero'])))
+        embeds[3].set_thumbnail(url=stats_leaders_dict['kda']['avatar'])
+        embeds[3].add_field(name="KDA", value=stats_leaders_dict['kda']['value'])
+        embeds[3].add_field(name="MatchID", value="{}".format(stats_leaders_dict["kda"]["match"]))
 
         print('Processed Highest KDA')
 
-        embed4 = discord.Embed(title="Highest Hero damage", colour=discord.Colour(0x1),
+        embeds[4] = discord.Embed(title="Highest Hero damage", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['herodamage']['name'])
-        embed4.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['herodamage']['hero'])))
-        embed4.set_thumbnail(url=stats_leaders_dict['herodamage']['avatar'])
-        embed4.add_field(name="Damage", value=stats_leaders_dict['herodamage']['value'])
-        embed4.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["herodamage"]["match"],
-                                                                 stats_leaders_dict["herodamage"]["match"]))
+        embeds[4].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['herodamage']['hero'])))
+        embeds[4].set_thumbnail(url=stats_leaders_dict['herodamage']['avatar'])
+        embeds[4].add_field(name="Damage", value=stats_leaders_dict['herodamage']['value'])
+        embeds[4].add_field(name="MatchID", value="{}".format(stats_leaders_dict["herodamage"]["match"]))
 
         print('Processed Highest Hero Damage')
 
-        embed5 = discord.Embed(title="Highest Stun time", colour=discord.Colour(0x1),
+        embeds[5] = discord.Embed(title="Highest Stun time", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['stuns']['name'])
-        embed5.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['stuns']['hero'])))
-        embed5.set_thumbnail(url=stats_leaders_dict['stuns']['avatar'])
-        embed5.add_field(name="Stun time", value=round(stats_leaders_dict['stuns']['value'], 2))
-        embed5.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["stuns"]["match"],
-                                                                 stats_leaders_dict["stuns"]["match"]))
+        embeds[5].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['stuns']['hero'])))
+        embeds[5].set_thumbnail(url=stats_leaders_dict['stuns']['avatar'])
+        embeds[5].add_field(name="Stun time", value=round(stats_leaders_dict['stuns']['value'], 2))
+        embeds[5].add_field(name="MatchID", value="{}".format(stats_leaders_dict["stuns"]["match"]))
 
         print('Processed Highest Stun Time')
 
-        embed6 = discord.Embed(title="Most camps stacked", colour=discord.Colour(0x1),
+        embeds[6] = discord.Embed(title="Most camps stacked", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['camps']['name'])
-        embed6.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['camps']['hero'])))
-        embed6.set_thumbnail(url=stats_leaders_dict['camps']['avatar'])
-        embed6.add_field(name="Camps stacked", value=stats_leaders_dict['camps']['value'])
-        embed6.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["camps"]["match"],
-                                                                 stats_leaders_dict["camps"]["match"]))
+        embeds[6].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['camps']['hero'])))
+        embeds[6].set_thumbnail(url=stats_leaders_dict['camps']['avatar'])
+        embeds[6].add_field(name="Camps stacked", value=stats_leaders_dict['camps']['value'])
+        embeds[6].add_field(name="MatchID", value="{}".format(stats_leaders_dict["camps"]["match"]))
 
         print('Processed Most Camps Stacked')
 
-        embed7 = discord.Embed(title="Highest Tower damage", colour=discord.Colour(0x1),
+        embeds[7] = discord.Embed(title="Highest Tower damage", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['towerdamage']['name'])
-        embed7.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['towerdamage']['hero'])))
-        embed7.set_thumbnail(url=stats_leaders_dict['towerdamage']['avatar'])
-        embed7.add_field(name="Damage", value=stats_leaders_dict['towerdamage']['value'])
-        embed7.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["towerdamage"]["match"],
-                                                                 stats_leaders_dict["towerdamage"]["match"]))
+        embeds[7].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['towerdamage']['hero'])))
+        embeds[7].set_thumbnail(url=stats_leaders_dict['towerdamage']['avatar'])
+        embeds[7].add_field(name="Damage", value=stats_leaders_dict['towerdamage']['value'])
+        embeds[7].add_field(name="MatchID", value="{}".format(stats_leaders_dict["towerdamage"]["match"]))
 
         print('Processed Highest Tower Damage')
 
-        embed8 = discord.Embed(title="Best lane efficiency", colour=discord.Colour(0x1),
+        embeds[8] = discord.Embed(title="Best lane efficiency", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['lane']['name'])
-        embed8.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['lane']['hero'])))
-        embed8.set_thumbnail(url=stats_leaders_dict['lane']['avatar'])
-        embed8.add_field(name="Efficiency", value=round(stats_leaders_dict['lane']['value'], 2))
-        embed8.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["lane"]["match"],
-                                                                 stats_leaders_dict["lane"]["match"]))
+        embeds[8].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['lane']['hero'])))
+        embeds[8].set_thumbnail(url=stats_leaders_dict['lane']['avatar'])
+        embeds[8].add_field(name="Efficiency", value=round(stats_leaders_dict['lane']['value'], 2))
+        embeds[8].add_field(name="MatchID", value="{}".format(stats_leaders_dict["lane"]["match"]))
 
         print('Processed Best Lane Efficiency')
 
-        embed9 = discord.Embed(title="Highest dewards", colour=discord.Colour(0x1),
+        embeds[9] = discord.Embed(title="Highest dewards", colour=discord.Colour(0x1),
                                description=stats_leaders_dict['deward']['name'])
-        embed9.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['deward']['hero'])))
-        embed9.set_thumbnail(url=stats_leaders_dict['deward']['avatar'])
-        embed9.add_field(name="Dewards", value=stats_leaders_dict['deward']['value'])
-        embed9.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["deward"]["match"],
-                                                                 stats_leaders_dict["deward"]["match"]))
+        embeds[9].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['deward']['hero'])))
+        embeds[9].set_thumbnail(url=stats_leaders_dict['deward']['avatar'])
+        embeds[9].add_field(name="Dewards", value=stats_leaders_dict['deward']['value'])
+        embeds[9].add_field(name="MatchID", value="{}".format(stats_leaders_dict["deward"]["match"]))
 
         print('Processed Highest Dewards')
 
-        # embed10 = discord.Embed(title="Highest APM", colour=discord.Colour(0x1),
+        # embeds[10] = discord.Embed(title="Highest APM", colour=discord.Colour(0x1),
         #                         description=stats_leaders_dict['apm']['name'])
-        # embed10.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['apm']['hero'])))
-        # embed10.set_thumbnail(url=stats_leaders_dict['apm']['avatar'])
-        # embed10.add_field(name="APM", value=stats_leaders_dict['apm']['value'])
-        # embed10.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["apm"]["match"],
+        # embeds[10].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['apm']['hero'])))
+        # embeds[10].set_thumbnail(url=stats_leaders_dict['apm']['avatar'])
+        # embeds[10].add_field(name="APM", value=stats_leaders_dict['apm']['value'])
+        # embeds[10].add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["apm"]["match"],
         #                                                           stats_leaders_dict["apm"]["match"]))
 
         # print('Processed Highest APM')
 
-        embed16 = discord.Embed(title="Highest Courier kills", colour=discord.Colour(0x1),
+        embeds[16] = discord.Embed(title="Highest Courier kills", colour=discord.Colour(0x1),
                                 description=stats_leaders_dict['courier']['name'])
-        embed16.set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['courier']['hero'])))
-        embed16.set_thumbnail(url=stats_leaders_dict['courier']['avatar'])
-        embed16.add_field(name="Couriers", value=stats_leaders_dict['courier']['value'])
-        embed16.add_field(name="MatchID", value="[{}]({})".format(stats_leaders_dict["courier"]["match"],
-                                                                  stats_leaders_dict["courier"]["match"]))
+        embeds[16].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['courier']['hero'])))
+        embeds[16].set_thumbnail(url=stats_leaders_dict['courier']['avatar'])
+        embeds[16].add_field(name="Couriers", value=stats_leaders_dict['courier']['value'])
+        embeds[16].add_field(name="MatchID", value="{}".format(stats_leaders_dict["courier"]["match"]))
+
+        embeds[17] = discord.Embed(title="Most Deaths", colour=discord.Colour(0x1),
+                                description=stats_leaders_dict['deaths']['name'])
+        embeds[17].set_image(url="{}{}.png".format(steam_cdn, get_hero_name(stats_leaders_dict['deaths']['hero'])))
+        embeds[17].set_thumbnail(url=stats_leaders_dict['deaths']['avatar'])
+        embeds[17].add_field(name="Deaths", value=stats_leaders_dict['deaths']['value'])
+        embeds[17].add_field(name="MatchID", value='{}'.format(stats_leaders_dict["deaths"]["match"]))
 
         print('Processed Highest Courier Kills')
 
-        filtered_gpm1 = {key: value for key, value in gpm1.items()}
-        sorted_dict_gpm = sorted(filtered_gpm1.items(), key=threshold_wrapper, reverse=True)
-        filtered_kda1 = {key: value for key, value in kda1.items()}
-        sorted_dict_kda = sorted(filtered_kda1.items(), key=threshold_wrapper, reverse=True)
-        filtered_fantasy1 = {key: value for key, value in fantasy1.items()}
-        sorted_dict_fantasy = sorted(filtered_fantasy1.items(), key=threshold_wrapper, reverse=True)
+        for i in range(1, 6):
+            filtered_gpm = copy.deepcopy({key: value for key, value in rd2lstats.gpm_data['gpm' + str(i)].items()})
+            rounded_dict_gpm = {k: [round(v[0], 2), v[1]] for k, v in filtered_gpm.items()}
+            sorted_dict_gpm = sorted(rounded_dict_gpm.items(), key=threshold_wrapper, reverse=True)[:player_ranking_cutoff]
 
-        embed11 = discord.Embed(title="Pos 1 Leaderboard", colour=discord.Colour(0x1))
-        embed11.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed11.add_field(name="Player", value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[0][0]),
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[1][0]),
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[2][0]),
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[3][0]),
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[4][0]),
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[5][0]),
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[6][0]),
-            rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[7][0])
-            #rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[8][0]),
-            #rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[9][0])), 
-        ), inline=True)
-        embed11.add_field(name="GPM",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(sorted_dict_gpm[0][1][0], 
-                                                                                         sorted_dict_gpm[1][1][0],
-                                                                sorted_dict_gpm[2][1][0], 
-                                                                sorted_dict_gpm[3][1][0],
-                                                                sorted_dict_gpm[4][1][0], 
-                                                                sorted_dict_gpm[5][1][0], 
-                                                                sorted_dict_gpm[6][1][0],
-                                                                sorted_dict_gpm[7][1][0], 
-                                                                #sorted_dict_gpm[8][1][0],
-                                                                #sorted_dict_gpm[9][1][0]
-                                                                ), inline=True)
-        embed11.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed11.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[7][0]),
-                              #rd2lstats.get_player_name_for_account_id(sorted_dict_kda[8][0]),
-                              #rd2lstats.get_player_name_for_account_id(sorted_dict_kda[9][0])
-                              ), inline=True)
-        embed11.add_field(name="KDA",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(sorted_dict_kda[0][1][0], sorted_dict_kda[1][1][0],
-                                                                sorted_dict_kda[2][1][0], sorted_dict_kda[3][1][0],
-                                                                sorted_dict_kda[4][1][0], sorted_dict_kda[5][1][0], sorted_dict_kda[6][1][0],
-                                                                sorted_dict_kda[7][1][0], 
-#                                                                sorted_dict_kda[8][1][0],
-#                                                                sorted_dict_kda[9][1][0]),
-                          ),  inline=True)
-        embed11.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.".format(), inline=True)
-        embed11.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[7][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[8][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[9][0])),
-                           ), inline=True)
-        embed11.add_field(name="Overall performance",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(round(sorted_dict_fantasy[0][1][0], 2),
-                                                                round(sorted_dict_fantasy[1][1][0], 2),
-                                                                round(sorted_dict_fantasy[2][1][0], 2),
-                                                                round(sorted_dict_fantasy[3][1][0], 2),
-                                                                round(sorted_dict_fantasy[4][1][0], 2),
-                                                                round(sorted_dict_fantasy[5][1][0], 2),
-                                                                round(sorted_dict_fantasy[6][1][0], 2),
-                                                                round(sorted_dict_fantasy[7][1][0], 2),
-#                                                                round(sorted_dict_fantasy[8][1][0], 2),
-#                                                                round(sorted_dict_fantasy[9][1][0], 2)),
-                           ), inline=True)
+            filtered_kda = copy.deepcopy({key: value for key, value in rd2lstats.kda_data['kda' + str(i)].items()})
+            rounded_dict_kda = {k: [round(v[0], 2), v[1]] for k, v in filtered_kda.items()}
+            sorted_dict_kda = sorted(rounded_dict_kda.items(), key=threshold_wrapper, reverse=True)[:player_ranking_cutoff]
 
-        print('Processed embed 11')
-        # await message.channel.send(embed=embed11)
+            filtered_fantasy = copy.deepcopy({key: value for key, value in rd2lstats.fantasy_data['fantasy' + str(i)].items()})
+            rounded_dict_fantasy = {k: [round(v[0], 2), v[1]] for k, v in filtered_fantasy.items()}
+            sorted_dict_fantasy = sorted(rounded_dict_fantasy.items(), key=threshold_wrapper, reverse=True)[:player_ranking_cutoff]
 
-        filtered_gpm2 = {key: value for key, value in gpm2.items()}
-        sorted_dict_gpm = sorted(filtered_gpm2.items(), key=threshold_wrapper, reverse=True)
-        filtered_kda2 = {key: value for key, value in kda2.items()}
-        sorted_dict_kda = sorted(filtered_kda2.items(), key=threshold_wrapper, reverse=True)
-        filtered_fantasy2 = {key: value for key, value in fantasy2.items()}
-        sorted_dict_fantasy = sorted(filtered_fantasy2.items(), key=threshold_wrapper, reverse=True)
+            embeds[10 + i] = discord.Embed(title=f"Pos {i} Leaderboard", colour=discord.Colour(0x1))
 
-        embed12 = discord.Embed(title="Pos 2 Leaderboard", colour=discord.Colour(0x1))
-        embed12.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed12.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[7][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[8][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[9][0])), 
-                            ),  inline=True)
-        embed12.add_field(name="GPM",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_gpm[0][1][0], sorted_dict_gpm[1][1][0],
-                                                                sorted_dict_gpm[2][1][0], sorted_dict_gpm[3][1][0],
-                                                                sorted_dict_gpm[4][1][0], sorted_dict_gpm[5][1][0], sorted_dict_gpm[6][1][0],
-                                                                sorted_dict_gpm[7][1][0], 
-#                                                                sorted_dict_gpm[8][1][0],
-#                                                                sorted_dict_gpm[9][1][0]), 
-                            ),  inline=True)
-        embed12.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed12.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{} ".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[7][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[8][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[9][0])),
-                            ),  inline=True)
-        embed12.add_field(name="KDA",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_kda[0][1][0], sorted_dict_kda[1][1][0],
-                                                                sorted_dict_kda[2][1][0], sorted_dict_kda[3][1][0],
-                                                                sorted_dict_kda[4][1][0], sorted_dict_kda[5][1][0], sorted_dict_kda[6][1][0],
-                                                                sorted_dict_kda[7][1][0], 
-#                                                                sorted_dict_kda[8][1][0],
-#                                                                sorted_dict_kda[9][1][0]), 
-                            ),  inline=True)
-        embed12.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed12.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[7][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[8][0]),
-#                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[9][0])),
-                            ),  inline=True)
-        embed12.add_field(name="Overall performance",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(round(sorted_dict_fantasy[0][1][0], 2),
-                                                                round(sorted_dict_fantasy[1][1][0], 2),
-                                                                round(sorted_dict_fantasy[2][1][0], 2),
-                                                                round(sorted_dict_fantasy[3][1][0], 2),
-                                                                round(sorted_dict_fantasy[4][1][0], 2),
-                                                                round(sorted_dict_fantasy[5][1][0], 2),
-                                                                round(sorted_dict_fantasy[6][1][0], 2),
-                                                                round(sorted_dict_fantasy[7][1][0], 2),
-#                                                                round(sorted_dict_fantasy[8][1][0], 2),
-#                                                                round(sorted_dict_fantasy[9][1][0], 2)),
-                           ), inline=True)
+            ranking = '\n'.join(f"{i + 1}." for i in range(player_ranking_cutoff))
+            embeds[10 + i].add_field(name="Ranking", value=ranking, inline=True)
 
-        print('Processed embed 12')
-        print('Sleeping for 60s...')
+            player_names = '\n'.join(rd2lstats.get_player_name_for_account_id(player_id) for player_id, _ in sorted_dict_gpm)
+            embeds[10 + i].add_field(name="Player", value=player_names, inline=True)
 
-        time.sleep(60)
+            gpm_values = '\n'.join(str(gpm[0]) for _, gpm in sorted_dict_gpm[:8])
+            embeds[10 + i].add_field(name="GPM", value=gpm_values, inline=True)
 
-        filtered_gpm3 = {key: value for key, value in gpm3.items()}
-        sorted_dict_gpm = sorted(filtered_gpm3.items(), key=threshold_wrapper, reverse=True)
-        filtered_kda3 = {key: value for key, value in kda3.items()}
-        sorted_dict_kda = sorted(filtered_kda3.items(), key=threshold_wrapper, reverse=True)
-        filtered_fantasy3 = {key: value for key, value in fantasy3.items()}
-        sorted_dict_fantasy = sorted(filtered_fantasy3.items(), key=threshold_wrapper, reverse=True)
+            ranking = '\n'.join(f"{i + 1}." for i in range(player_ranking_cutoff))
+            embeds[10 + i].add_field(name="Ranking", value=ranking, inline=True)
 
-        embed13 = discord.Embed(title="Pos 3 Leaderboard", colour=discord.Colour(0x1))
-        embed13.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed13.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[9][0])),
-                          ), inline=True)
-        embed13.add_field(name="GPM",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_gpm[0][1][0], sorted_dict_gpm[1][1][0],
-                                                                sorted_dict_gpm[2][1][0], sorted_dict_gpm[3][1][0],
-                                                                sorted_dict_gpm[4][1][0], sorted_dict_gpm[5][1][0], sorted_dict_gpm[6][1][0],
-                                                                sorted_dict_gpm[7][1][0], 
-    #                                                            sorted_dict_gpm[8][1][0],
-    #                                                            sorted_dict_gpm[9][1][0]), 
-                            ),  inline=True)
-        embed13.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed13.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_kda[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_kda[9][0])),
-                            ),  inline=True)
-        embed13.add_field(name="KDA",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_kda[0][1][0], sorted_dict_kda[1][1][0],
-                                                                sorted_dict_kda[2][1][0], sorted_dict_kda[3][1][0],
-                                                                sorted_dict_kda[4][1][0], sorted_dict_kda[5][1][0], sorted_dict_kda[6][1][0],
-                                                                sorted_dict_kda[7][1][0], 
-    #                                                            sorted_dict_kda[8][1][0],
-    #                                                            sorted_dict_kda[9][1][0]), 
-                            ),  inline=True)
-        embed13.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed13.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[9][0])),
-                            ),  inline=True)
-        embed13.add_field(name="Overall performance",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(round(sorted_dict_fantasy[0][1][0], 2),
-                                                                round(sorted_dict_fantasy[1][1][0], 2),
-                                                                round(sorted_dict_fantasy[2][1][0], 2),
-                                                                round(sorted_dict_fantasy[3][1][0], 2),
-                                                                round(sorted_dict_fantasy[4][1][0], 2),
-                                                                round(sorted_dict_fantasy[5][1][0], 2),
-                                                                round(sorted_dict_fantasy[6][1][0], 2),
-                                                                round(sorted_dict_fantasy[7][1][0], 2),
-    #                                                            round(sorted_dict_fantasy[8][1][0], 2),
-    #                                                            round(sorted_dict_fantasy[9][1][0], 2)), 
-                           ), inline=True)
+            player_names = '\n'.join(rd2lstats.get_player_name_for_account_id(player_id) for player_id, _ in sorted_dict_kda)
+            embeds[10 + i].add_field(name="Player", value=player_names, inline=True)
 
-        print('Processed embed 13')
+            kda_values = '\n'.join(str(kda[0]) for _, kda in sorted_dict_kda[:8])
+            embeds[10 + i].add_field(name="KDA", value=kda_values, inline=True)
+     
+            ranking = '\n'.join(f"{i + 1}." for i in range(player_ranking_cutoff))
+            embeds[10 + i].add_field(name="Ranking", value=ranking, inline=True)
 
-        filtered_gpm4 = {key: value for key, value in gpm4.items()}
-        sorted_dict_gpm = sorted(filtered_gpm4.items(), key=threshold_wrapper, reverse=True)
-        filtered_kda4 = {key: value for key, value in kda4.items()}
-        sorted_dict_kda = sorted(filtered_kda4.items(), key=threshold_wrapper, reverse=True)
-        filtered_fantasy4 = {key: value for key, value in fantasy4.items()}
-        sorted_dict_fantasy = sorted(filtered_fantasy4.items(), key=threshold_wrapper, reverse=True)
+            player_names = '\n'.join(rd2lstats.get_player_name_for_account_id(player_id) for player_id, _ in sorted_dict_fantasy)
+            embeds[10 + i].add_field(name="Player", value=player_names, inline=True)
 
-        embed14 = discord.Embed(title="Pos 4 Leaderboard", colour=discord.Colour(0x1))
-        embed14.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed14.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[9][0])), 
-                           ), inline=True)
-        embed14.add_field(name="GPM",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_gpm[0][1][0], sorted_dict_gpm[1][1][0],
-                                                                sorted_dict_gpm[2][1][0], sorted_dict_gpm[3][1][0],
-                                                                sorted_dict_gpm[4][1][0], sorted_dict_gpm[5][1][0], sorted_dict_gpm[6][1][0],
-                                                                sorted_dict_gpm[7][1][0], 
-    #                                                            sorted_dict_gpm[8][1][0],
-    #                                                            sorted_dict_gpm[9][1][0]), 
-                            ),  inline=True)
-        embed14.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed14.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(rd2lstats.get_player_name_for_account_id(sorted_dict_kda[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_kda[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_kda[9][0])),
-                             ),   inline=True)
-        embed14.add_field(name="KDA",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_kda[0][1][0], sorted_dict_kda[1][1][0],
-                                                                sorted_dict_kda[2][1][0], sorted_dict_kda[3][1][0],
-                                                                sorted_dict_kda[4][1][0], sorted_dict_kda[5][1][0], sorted_dict_kda[6][1][0],
-                                                                sorted_dict_kda[7][1][0], 
-    #                                                            sorted_dict_kda[8][1][0],
-    #                                                            sorted_dict_kda[9][1][0]),
-                            ),  inline=True)
-        embed14.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed14.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[9][0])), 
-                            ),  inline=True)
-        embed14.add_field(name="Overall performance",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(round(sorted_dict_fantasy[0][1][0], 2),
-                                                                round(sorted_dict_fantasy[1][1][0], 2),
-                                                                round(sorted_dict_fantasy[2][1][0], 2),
-                                                                round(sorted_dict_fantasy[3][1][0], 2),
-                                                                round(sorted_dict_fantasy[4][1][0], 2),
-                                                                round(sorted_dict_fantasy[5][1][0], 2),
-                                                                round(sorted_dict_fantasy[6][1][0], 2),
-                                                                round(sorted_dict_fantasy[7][1][0], 2),
-    #                                                            round(sorted_dict_fantasy[8][1][0], 2),
-    #                                                            round(sorted_dict_fantasy[9][1][0], 2)),
-                            ),  inline=True)
+            overall_performance_values = '\n'.join(str(round(performance_data[0], 2)) for _, performance_data in sorted_dict_fantasy[:8])
+            embeds[10 + i].add_field(name="Overall performance", value=overall_performance_values, inline=True)
 
-        print('Processed embed 14')
+            print('Processed embed ' + str(10 + i))
 
-        filtered_gpm5 = {key: value for key, value in gpm5.items()}
-        sorted_dict_gpm = sorted(filtered_gpm5.items(), key=threshold_wrapper, reverse=True)
-        filtered_kda5 = {key: value for key, value in kda5.items()}
-        sorted_dict_kda = sorted(filtered_kda5.items(), key=threshold_wrapper, reverse=True)
-        filtered_fantasy5 = {key: value for key, value in fantasy5.items()}
-        sorted_dict_fantasy = sorted(filtered_fantasy5.items(), key=threshold_wrapper, reverse=True)
-        print('Sleeping for 60s...')
+        await message.channel.send(embed=embeds[1])
+        await message.channel.send(embed=embeds[2])
+        await message.channel.send(embed=embeds[3])
+        await message.channel.send(embed=embeds[4])
+        await message.channel.send(embed=embeds[5])
+        await message.channel.send(embed=embeds[6])
+        await message.channel.send(embed=embeds[7])
+        await message.channel.send(embed=embeds[8])
+        await message.channel.send(embed=embeds[9])
+        # await message.channel.send(embed=embeds[10])
+        await message.channel.send(embed=embeds[16])
+        await message.channel.send(embed=embeds[17])
 
-        time.sleep(60)
-
-        embed15 = discord.Embed(title="Pos 5 Leaderboard", colour=discord.Colour(0x1))
-        embed15.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed15.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_gpm[9][0])),
-                            ),  inline=True)
-        embed15.add_field(name="GPM",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_gpm[0][1][0], sorted_dict_gpm[1][1][0],
-                                                                sorted_dict_gpm[2][1][0], sorted_dict_gpm[3][1][0],
-                                                                sorted_dict_gpm[4][1][0], sorted_dict_gpm[5][1][0], sorted_dict_gpm[6][1][0],
-                                                                sorted_dict_gpm[7][1][0], 
-    #                                                            sorted_dict_gpm[8][1][0],
-    #                                                            sorted_dict_gpm[9][1][0]), 
-                          ), inline=True)
-        embed15.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed15.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(rd2lstats.get_player_name_for_account_id(sorted_dict_kda[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_kda[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_kda[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_kda[9][0])),
-                            ),  inline=True)
-        embed15.add_field(name="KDA",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(sorted_dict_kda[0][1][0], sorted_dict_kda[1][1][0],
-                                                                sorted_dict_kda[2][1][0], sorted_dict_kda[3][1][0],
-                                                                sorted_dict_kda[4][1][0], sorted_dict_kda[5][1][0], sorted_dict_kda[6][1][0],
-                                                                sorted_dict_kda[7][1][0], 
-    #                                                            sorted_dict_kda[8][1][0],
-    #                                                            sorted_dict_kda[9][1][0]), 
-                            ),  inline=True)
-        embed15.add_field(name="Ranking", value="1.\n2.\n3.\n4.\n5.\n6.\n7.\n8.\n9.\n10.", inline=True)
-        embed15.add_field(name="Player",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[0][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[1][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[2][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[3][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[4][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[5][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[6][0]),
-                              rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[7][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[8][0]),
-    #                          rd2lstats.get_player_name_for_account_id(sorted_dict_fantasy[9][0])),
-                            ),  inline=True)
-        embed15.add_field(name="Overall performance",
-                          value="{} \n{} \n{} \n{} \n{} \n{} \n{} \n{}".format(round(sorted_dict_fantasy[0][1][0], 2),
-                                                                round(sorted_dict_fantasy[1][1][0], 2),
-                                                                round(sorted_dict_fantasy[2][1][0], 2),
-                                                                round(sorted_dict_fantasy[3][1][0], 2),
-                                                                round(sorted_dict_fantasy[4][1][0], 2),
-                                                                round(sorted_dict_fantasy[5][1][0], 2),
-                                                                round(sorted_dict_fantasy[6][1][0], 2),
-                                                                round(sorted_dict_fantasy[7][1][0], 2),
-    #                                                            round(sorted_dict_fantasy[8][1][0], 2),
-    #                                                            round(sorted_dict_fantasy[9][1][0], 2)), 
-                            ),  inline=True)
-
-        print('Processed embed 15')
-
-        await message.channel.send(embed=embed)
-        await message.channel.send(embed=embed2)
-        await message.channel.send(embed=embed3)
-        await message.channel.send(embed=embed4)
-        await message.channel.send(embed=embed5)
-        await message.channel.send(embed=embed6)
-        await message.channel.send(embed=embed7)
-        await message.channel.send(embed=embed8)
-        await message.channel.send(embed=embed9)
-        # await message.channel.send(embed=embed10)
-        await message.channel.send(embed=embed16)
-
-        await message.channel.send(embed=embed11)
-        await message.channel.send(embed=embed12)
-        await message.channel.send(embed=embed13)
-        await message.channel.send(embed=embed14)
-        await message.channel.send(embed=embed15)
+        await message.channel.send(embed=embeds[11])
+        await message.channel.send(embed=embeds[12])
+        await message.channel.send(embed=embeds[13])
+        await message.channel.send(embed=embeds[14])
+        await message.channel.send(embed=embeds[15])
         print("Sent stats successfully")
 
 client.run(permissionkey)
