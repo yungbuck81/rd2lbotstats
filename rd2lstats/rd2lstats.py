@@ -99,6 +99,8 @@ class Rd2lStats:
         self.kda_data = {}
         self.fantasy_data = {}
 
+        self.consecutive_fails = 0
+
     # Function that calculates the fantasy score for a player object
     def get_fantasy_score(self, player):
         first_blood_claimed = 0 if player["firstblood_claimed"] is None else player["firstblood_claimed"]
@@ -132,12 +134,22 @@ class Rd2lStats:
 
     # Returns the player name in text given the player ID
     def get_player_name_for_account_id(self, playerId):
-        response = requests.get(opendota_api_players_url + playerId)
+        json_data = self.request_opendota(opendota_api_players_url + playerId)
+        return json_data['profile']['name'] if json_data['profile'].get('name') is not None else json_data['profile']['personaname']
+
+    def request_opendota(self, url):
+        response = requests.get(url)
         json_data = json.loads(response.text)
-        if 'profile' in json_data:
-            return json_data['profile']['name'] if json_data['profile'].get('name') is not None else json_data['profile']['personaname']
+        if 'rate limit' in json_data.get('error', ''):
+            self.consecutive_fails += 1
+            time.sleep(61)
+            if (self.consecutive_fails < 4):
+                return self.request_opendota(url)
+            else:
+                return 'Unable to make request'
         else:
-            return "Name not found"
+            self.consecutive_fails = 0
+            return json_data
 
     # Function to process csv files and check duplicates for a single player across multiple pos. User can select
     # manually which role they should belong to
@@ -791,8 +803,7 @@ class Rd2lStats:
 
         matches_size = len(match_ids)
         for match_index, matchid in enumerate(match_ids):
-            response = requests.get(opendota_api_matches_url + matchid)
-            json_data = json.loads(response.text)
+            json_data = self.request_opendota(opendota_api_matches_url + matchid)
 
             radiant_players = {
               'pos1' : None,
@@ -1077,13 +1088,8 @@ class Rd2lStats:
                 #     self.highest_apm_match = dotabuff_url + str(json_data['match_id'])
             print("Processed match {} of {} with ID: {}".format(match_index + 1, matches_size, matchid))
 
-        # Sleeping to avoid OpenDota API throttling
-        #print("Sleeping for 60s...")
-        #time.sleep(60)
-        response = requests.get(opendota_api_players_url + str(self.highest_gpm_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_gpm_player))
 
-        # TODO: Refactor to avoid duplication
         self.stats_leaders_dict["gpm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                                                    else json_data['profile']['personaname']),
                                           "avatar": json_data['profile']['avatarmedium'],
@@ -1091,8 +1097,7 @@ class Rd2lStats:
                                           "match": self.highest_gpm_match,
                                           "value": self.highest_gpm_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_xpm_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_xpm_player))
         self.stats_leaders_dict["xpm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                                                    else json_data['profile']['personaname']),
                                           "avatar": json_data['profile']['avatarmedium'],
@@ -1100,8 +1105,7 @@ class Rd2lStats:
                                           "match": self.highest_xpm_match,
                                           "value": self.highest_xpm_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_kda_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_kda_player))
         self.stats_leaders_dict["kda"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                                                    else json_data['profile']['personaname']),
                                           "avatar": json_data['profile']['avatarmedium'],
@@ -1109,8 +1113,7 @@ class Rd2lStats:
                                           "match": self.highest_kda_match,
                                           "value": self.highest_kda_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_camps_player))
-        json_data = json.loads(response.text)
+        jdson_data = self.request_opendota(opendota_api_players_url + str(self.highest_camps_player))
         self.stats_leaders_dict["camps"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']),
@@ -1119,8 +1122,7 @@ class Rd2lStats:
             "match": self.highest_camps_match,
             "value": self.highest_camps_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_herodamage_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_herodamage_player))
         self.stats_leaders_dict["herodamage"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']),
@@ -1129,8 +1131,7 @@ class Rd2lStats:
             "match": self.highest_herodamage_match,
             "value": self.highest_herodamage_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_stuns_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_stuns_player))
         self.stats_leaders_dict["stuns"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']),
@@ -1139,8 +1140,7 @@ class Rd2lStats:
             "match": self.highest_stuns_match,
             "value": self.highest_stuns_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_towerdamage_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_towerdamage_player))
         self.stats_leaders_dict["towerdamage"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']),
@@ -1149,8 +1149,7 @@ class Rd2lStats:
             "match": self.highest_towerdamage_match,
             "value": self.highest_towerdamage_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_lane_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_lane_player))
         self.stats_leaders_dict["lane"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                                                     else json_data['profile']['personaname']),
                                            "avatar": json_data['profile']['avatarmedium'],
@@ -1158,8 +1157,7 @@ class Rd2lStats:
                                            "match": self.highest_lane_match,
                                            "value": self.highest_lane_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_deward_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_deward_player))
         self.stats_leaders_dict["deward"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']),
@@ -1168,8 +1166,7 @@ class Rd2lStats:
             "match": self.highest_deward_match,
             "value": self.highest_deward_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_deaths_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_deaths_player))
         self.stats_leaders_dict["deaths"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']),
@@ -1178,8 +1175,7 @@ class Rd2lStats:
             "match": self.highest_deaths_match,
             "value": self.highest_deaths_value}
 
-        # response = requests.get(opendota_api_players_url + str(self.highest_apm_player))
-        # json_data = json.loads(response.text)
+        # json_data = self.request_opendota(opendota_api_players_url + str(self.highest_apm_player))
         # self.stats_leaders_dict["apm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
         #                                            else json_data['profile']['personaname']),
         #                                   "avatar": json_data['profile']['avatarmedium'],
@@ -1187,8 +1183,7 @@ class Rd2lStats:
         #                                   "match": self.highest_apm_match,
         #                                   "value": self.highest_apm_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_courier_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_courier_player))
         self.stats_leaders_dict["courier"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']),
@@ -1197,8 +1192,7 @@ class Rd2lStats:
             "match": self.highest_courier_match,
             "value": self.highest_courier_value}
 
-        response = requests.get(opendota_api_players_url + str(self.highest_deaths_player))
-        json_data = json.loads(response.text)
+        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_deaths_player))
         self.stats_leaders_dict["deaths"] = {
             "name": (json_data['profile']['name'] if json_data['profile']['name'] != None
                      else json_data['profile']['personaname']), 
@@ -1240,9 +1234,6 @@ async def on_ready():
 @client.event
 async def on_message(message):
     if message.author.id not in ADMIN_IDS:
-        print(message.author.id)
-        print(ADMIN_IDS)
-        print('Not authorized to make commands!')
         return
 
     # Find duplicates for a single player across multiple roles
