@@ -13,7 +13,7 @@ from constants.globalConstants import fantasy_kill_multiplier, fantasy_death_mul
     pos4gpmfile, pos5directory, pos5gpmfile, pos1kdafile, pos2kdafile, pos4kdafile, pos3kdafile, pos5kdafile, \
     pos1fantasyfile, pos2fantasyfile, pos3fantasyfile, pos4fantasyfile, pos5fantasyfile, match_ids, \
     opendota_api_matches_url, dotabuff_url, opendota_api_players_url, steam_cdn, permissionkeyfile, \
-    pos1currentdirectory, pos2currentdirectory, pos3currentdirectory, pos4currentdirectory, pos5currentdirectory, player_ranking_cutoff
+    pos1currentdirectory, pos2currentdirectory, pos3currentdirectory, pos4currentdirectory, pos5currentdirectory, player_ranking_cutoff, opendota_api_parse_url
 from constants.hero_ids import get_hero_name
 from constants.localconfig import ADMIN_IDS
 import time
@@ -106,17 +106,19 @@ class Rd2lStats:
 
     # Function that calculates the fantasy score for a player object
     def get_fantasy_score(self, player):
-        first_blood_claimed = 0 if player["firstblood_claimed"] is None else player["firstblood_claimed"]
-        #roshans = (player["roshan_kills"]*1000/player["duration"] if "roshan_kills" in player else player["roshans_killed"]/player["duration"])
-        # roshan_kills = 0 if roshans is None else roshans
-        towers_killed = player["towers_killed"] if player["towers_killed"] is not None else 0
-        obs_placed = player["obs_placed"]*1000/player["duration"] if player["obs_placed"] is not None else 0
-        sentry_kills = player["sentry_kills"]*1000/player["duration"] if (
-                "sentry_kills" in player and player["sentry_kills"] is not None) else 0
-        obs_kills = player["observer_kills"]*1000/player["duration"] if (
-                "observer_kills" in player and player["observer_kills"] is not None) else 0
-        camps_stacked = player["camps_stacked"]*1000/player["duration"] if player["camps_stacked"] is not None else 0
-        stuns = player["stuns"]/player["duration"] if player["stuns"] is not None else 0
+        try:
+            first_blood_claimed = player.get("firstblood_claimed", 0)
+            #roshans = (player["roshan_kills"]*1000/player["duration"] if "roshan_kills" in player else player["roshans_killed"]/player["duration"])
+            # roshan_kills = 0 if roshans is None else roshans
+            towers_killed = player.get("towers_killed", 0)
+            obs_placed = player.get("obs_placed", 0) * 1000 / player.get("duration", 1)
+            sentry_kills = player.get("sentry_kills", 0) * 1000 / player.get("duration", 1)
+            obs_kills = player.get("observer_kills", 0) * 1000 / player.get("duration", 1)
+            camps_stacked = player.get("camps_stacked", 0) * 1000 / player.get("duration", 1) 
+            stuns = player.get("stuns", 0) / player.get("duration", 1)
+        except:
+            print("Error parsing player object, printing:")
+            print(player)
         try:
             fantasy_score = round(
                 ((player["kills"] * fantasy_kill_multiplier * 1000)/player["duration"]) + ((player["deaths"] * fantasy_death_multiplier * 1000)/player["duration"]) + (
@@ -140,19 +142,50 @@ class Rd2lStats:
         json_data = self.request_opendota(opendota_api_players_url + playerId)
         return json_data['profile']['name'] if json_data['profile'].get('name') is not None else json_data['profile']['personaname']
 
-    def request_opendota(self, url):
-        response = requests.get(url)
-        json_data = json.loads(response.text)
-        if 'rate limit' in json_data.get('error', ''):
-            self.consecutive_fails += 1
-            time.sleep(61)
-            if (self.consecutive_fails < 4):
-                return self.request_opendota(url)
+    def post_opendota(self, url):
+        try:
+            response = requests.post(url)
+            json_data = json.loads(response.text)
+            if 'rate limit' in json_data.get('error', ''):
+                self.consecutive_fails += 1
+                time.sleep(61)
+                if (self.consecutive_fails < 4):
+                    return self.request_opendota(url)
+                else:
+                    return 'Unable to make request'
             else:
-                return 'Unable to make request'
-        else:
-            self.consecutive_fails = 0
-            return json_data
+                self.consecutive_fails = 0
+                return json_data
+        except Exception as e: 
+            print("Error making request to opendota!!")
+            print("url: " + url)
+            print("response: " + response.text)
+            raise e 
+
+    def request_opendota(self, url):
+        try: 
+            response = requests.get(url)
+            json_data = json.loads(response.text)
+            if 'rate limit' in json_data.get('error', ''):
+                self.consecutive_fails += 1
+                time.sleep(61)
+                if (self.consecutive_fails < 4):
+                    return self.request_opendota(url)
+                else:
+                    return 'Unable to make request'
+            else:
+                self.consecutive_fails = 0
+                return json_data
+        except Exception as e:
+            print("Error making request to opendota!!")
+            print("url: " + url)
+            print("response: " + response.text)
+            raise e
+
+    # parse all matches, this is ansync so go do something else after running this
+    def parse_matches(self):
+        for match_index, matchid in enumerate(match_ids):
+            self.post_opendota(opendota_api_parse_url + matchid) # first, request a parse
 
     # Function to process csv files and check duplicates for a single player across multiple pos. User can select
     # manually which role they should belong to
@@ -1027,94 +1060,103 @@ class Rd2lStats:
                             print("Failed in getting fantasy score")
 
             for player in json_data['players']:
-                if player['gold_per_min'] > self.highest_gpm_value:
-                    self.highest_gpm_value = player['gold_per_min']
-                    self.highest_gpm_player = player['account_id']
-                    self.highest_gpm_hero = player['hero_id']
-                    self.highest_gpm_match = dotabuff_url + str(json_data['match_id'])
-                if player['xp_per_min'] > self.highest_xpm_value:
-                    self.highest_xpm_value = player['xp_per_min']
-                    self.highest_xpm_player = player['account_id']
-                    self.highest_xpm_hero = player['hero_id']
-                    self.highest_xpm_match = dotabuff_url + str(json_data['match_id'])
-                if player['kda'] > self.highest_kda_value:
-                    self.highest_kda_value = player['kda']
-                    self.highest_kda_player = player['account_id']
-                    self.highest_kda_hero = player['hero_id']
-                    self.highest_kda_match = dotabuff_url + str(json_data['match_id'])
-                if player['camps_stacked'] is not None and player['camps_stacked'] > self.highest_camps_value:
-                    self.highest_camps_value = player['camps_stacked']
-                    self.highest_camps_player = player['account_id']
-                    self.highest_camps_hero = player['hero_id']
-                    self.highest_camps_match = dotabuff_url + str(json_data['match_id'])
-                if player['hero_damage'] > self.highest_herodamage_value:
-                    self.highest_herodamage_value = player['hero_damage']
-                    self.highest_herodamage_player = player['account_id']
-                    self.highest_herodamage_hero = player['hero_id']
-                    self.highest_herodamage_match = dotabuff_url + str(json_data['match_id'])
-                if player['stuns'] is not None and player['stuns'] > self.highest_stuns_value:
-                    self.highest_stuns_value = player['stuns']
-                    self.highest_stuns_player = player['account_id']
-                    self.highest_stuns_hero = player['hero_id']
-                    self.highest_stuns_match = dotabuff_url + str(json_data['match_id'])
-                if player['tower_damage'] is not None and player['tower_damage'] > self.highest_towerdamage_value:
-                    self.highest_towerdamage_value = player['tower_damage']
-                    self.highest_towerdamage_player = player['account_id']
-                    self.highest_towerdamage_hero = player['hero_id']
-                    self.highest_towerdamage_match = dotabuff_url + str(json_data['match_id'])
-                if 'lane_efficiency' in player and player['lane_efficiency'] > self.highest_lane_value:
-                    self.highest_lane_value = player['lane_efficiency']
-                    self.highest_lane_player = player['account_id']
-                    self.highest_lane_hero = player['hero_id']
-                    self.highest_lane_match = dotabuff_url + str(json_data['match_id'])
-                if 'observer_kills' in player and 'sentry_kills' in player and player['observer_kills'] is not None and \
-                        player['sentry_kills'] is not None and (
-                        player['observer_kills'] + player['sentry_kills']) > self.highest_deward_value:
-                    self.highest_deward_value = (player['observer_kills'] + player['sentry_kills'])
-                    self.highest_deward_player = player['account_id']
-                    self.highest_deward_hero = player['hero_id']
-                    self.highest_deward_match = dotabuff_url + str(json_data['match_id'])
-                if 'courier_kills' in player and player['courier_kills'] > self.highest_courier_value:
-                    self.highest_courier_value = player['courier_kills']
-                    self.highest_courier_player = player['account_id']
-                    self.highest_courier_hero = player['hero_id']
-                    self.highest_courier_match = dotabuff_url + str(json_data['match_id'])
-                if 'deaths' in player and player['deaths'] > self.highest_deaths_value:
-                    self.highest_deaths_value = player['deaths']
-                    self.highest_deaths_player = player['account_id']
-                    self.highest_deaths_hero = player['hero_id']
-                    self.highest_deaths_match = dotabuff_url + str(json_data['match_id'])
-                # if 'actions_per_min' in player and player['actions_per_min'] > self.highest_apm_value:
-                #     self.highest_apm_value = player['actions_per_min']
-                #     self.highest_apm_player = player['account_id']
-                #     self.highest_apm_hero = player['hero_id']
-                #     self.highest_apm_match = dotabuff_url + str(json_data['match_id'])
+                try:
+                    if 'gold_per_mid' in player and player['gold_per_min'] > self.highest_gpm_value:
+                        self.highest_gpm_value = player['gold_per_min']
+                        self.highest_gpm_player = player['account_id']
+                        self.highest_gpm_hero = player['hero_id']
+                        self.highest_gpm_match = dotabuff_url + str(json_data['match_id'])
+                    if 'xp_per_min' in player and player['xp_per_min'] > self.highest_xpm_value:
+                        self.highest_xpm_value = player['xp_per_min']
+                        self.highest_xpm_player = player['account_id']
+                        self.highest_xpm_hero = player['hero_id']
+                        self.highest_xpm_match = dotabuff_url + str(json_data['match_id'])
+                    if 'kda' in player and player['kda'] > self.highest_kda_value:
+                        self.highest_kda_value = player['kda']
+                        self.highest_kda_player = player['account_id']
+                        self.highest_kda_hero = player['hero_id']
+                        self.highest_kda_match = dotabuff_url + str(json_data['match_id'])
+                    if 'camps_stacked' in player and player['camps_stacked'] > self.highest_camps_value:
+                        self.highest_camps_value = player['camps_stacked']
+                        self.highest_camps_player = player['account_id']
+                        self.highest_camps_hero = player['hero_id']
+                        self.highest_camps_match = dotabuff_url + str(json_data['match_id'])
+                    if 'hero_damage' in player and player['hero_damage'] > self.highest_herodamage_value:
+                        self.highest_herodamage_value = player['hero_damage']
+                        self.highest_herodamage_player = player['account_id']
+                        self.highest_herodamage_hero = player['hero_id']
+                        self.highest_herodamage_match = dotabuff_url + str(json_data['match_id'])
+                    if 'stuns' in player and player['stuns'] > self.highest_stuns_value:
+                        self.highest_stuns_value = player['stuns']
+                        self.highest_stuns_player = player['account_id']
+                        self.highest_stuns_hero = player['hero_id']
+                        self.highest_stuns_match = dotabuff_url + str(json_data['match_id'])
+                    if 'tower_damage' in player and player['tower_damage'] > self.highest_towerdamage_value:
+                        self.highest_towerdamage_value = player['tower_damage']
+                        self.highest_towerdamage_player = player['account_id']
+                        self.highest_towerdamage_hero = player['hero_id']
+                        self.highest_towerdamage_match = dotabuff_url + str(json_data['match_id'])
+                    if 'lane_efficiency' in player and player['lane_efficiency'] > self.highest_lane_value:
+                        self.highest_lane_value = player['lane_efficiency']
+                        self.highest_lane_player = player['account_id']
+                        self.highest_lane_hero = player['hero_id']
+                        self.highest_lane_match = dotabuff_url + str(json_data['match_id'])
+                    if 'observer_kills' in player and 'sentry_kills' in player and player['observer_kills'] is not None and \
+                            player['sentry_kills'] is not None and (
+                            player['observer_kills'] + player['sentry_kills']) > self.highest_deward_value:
+                        self.highest_deward_value = (player['observer_kills'] + player['sentry_kills'])
+                        self.highest_deward_player = player['account_id']
+                        self.highest_deward_hero = player['hero_id']
+                        self.highest_deward_match = dotabuff_url + str(json_data['match_id'])
+                    if 'courier_kills' in player and player['courier_kills'] > self.highest_courier_value:
+                        self.highest_courier_value = player['courier_kills']
+                        self.highest_courier_player = player['account_id']
+                        self.highest_courier_hero = player['hero_id']
+                        self.highest_courier_match = dotabuff_url + str(json_data['match_id'])
+                    if 'deaths' in player and player['deaths'] > self.highest_deaths_value:
+                        self.highest_deaths_value = player['deaths']
+                        self.highest_deaths_player = player['account_id']
+                        self.highest_deaths_hero = player['hero_id']
+                        self.highest_deaths_match = dotabuff_url + str(json_data['match_id'])
+                    # if 'actions_per_min' in player and player['actions_per_min'] > self.highest_apm_value:
+                    #     self.highest_apm_value = player['actions_per_min']
+                    #     self.highest_apm_player = player['account_id']
+                    #     self.highest_apm_hero = player['hero_id']
+                    #     self.highest_apm_match = dotabuff_url + str(json_data['match_id'])
+                except:
+                    print("Error parsing player object!: ")
+                    print(player)
             print("Processed match {} of {} with ID: {}".format(match_index + 1, matches_size, matchid))
 
         json_data = self.request_opendota(opendota_api_players_url + str(self.highest_gpm_player))
+        try:
+            self.stats_leaders_dict["gpm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
+                                                       else json_data['profile']['personaname']),
+                                              "avatar": json_data['profile']['avatarmedium'],
+                                              "hero": self.highest_gpm_hero,
+                                              "match": self.highest_gpm_match,
+                                              "value": self.highest_gpm_value}
 
-        self.stats_leaders_dict["gpm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
-                                                   else json_data['profile']['personaname']),
-                                          "avatar": json_data['profile']['avatarmedium'],
-                                          "hero": self.highest_gpm_hero,
-                                          "match": self.highest_gpm_match,
-                                          "value": self.highest_gpm_value}
+            json_data = self.request_opendota(opendota_api_players_url + str(self.highest_xpm_player))
+            self.stats_leaders_dict["xpm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
+                                                       else json_data['profile']['personaname']),
+                                              "avatar": json_data['profile']['avatarmedium'],
+                                              "hero": self.highest_xpm_hero,
+                                              "match": self.highest_xpm_match,
+                                              "value": self.highest_xpm_value}
 
-        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_xpm_player))
-        self.stats_leaders_dict["xpm"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
-                                                   else json_data['profile']['personaname']),
-                                          "avatar": json_data['profile']['avatarmedium'],
-                                          "hero": self.highest_xpm_hero,
-                                          "match": self.highest_xpm_match,
-                                          "value": self.highest_xpm_value}
-
-        json_data = self.request_opendota(opendota_api_players_url + str(self.highest_kda_player))
-        self.stats_leaders_dict["kda"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
-                                                   else json_data['profile']['personaname']),
-                                          "avatar": json_data['profile']['avatarmedium'],
-                                          "hero": self.highest_kda_hero,
-                                          "match": self.highest_kda_match,
-                                          "value": self.highest_kda_value}
+            json_data = self.request_opendota(opendota_api_players_url + str(self.highest_kda_player))
+            self.stats_leaders_dict["kda"] = {"name": (json_data['profile']['name'] if json_data['profile']['name'] != None
+                                                       else json_data['profile']['personaname']),
+                                              "avatar": json_data['profile']['avatarmedium'],
+                                              "hero": self.highest_kda_hero,
+                                              "match": self.highest_kda_match,
+                                              "value": self.highest_kda_value}
+        except:
+            print("Error parsing json_data: ")
+            print(json_data)
+            print(str(self.highest_gpm_player))
+            print(opendota_api_players_url)
 
         jdson_data = self.request_opendota(opendota_api_players_url + str(self.highest_camps_player))
         self.stats_leaders_dict["camps"] = {
@@ -1255,6 +1297,12 @@ async def on_message(message):
     if message.content.startswith('$bot_generate_stats'):
         print('Generating stats...')
         rd2lstats.generate_stats()
+        print('Done generating stats')
+
+    if message.content.startswith('$bot_parse_matches'):
+       print('Parsing matches...')
+       rd2lstats.parse_matches()
+       print('Done parsing matches.')
 
     # Prints out stats in discord embeds
     if message.content.startswith('$bot_get_stats'):
