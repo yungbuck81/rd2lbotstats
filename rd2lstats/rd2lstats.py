@@ -1061,7 +1061,7 @@ class Rd2lStats:
 
             for player in json_data['players']:
                 try:
-                    if 'gold_per_mid' in player and player['gold_per_min'] > self.highest_gpm_value:
+                    if 'gold_per_min' in player and player['gold_per_min'] > self.highest_gpm_value:
                         self.highest_gpm_value = player['gold_per_min']
                         self.highest_gpm_player = player['account_id']
                         self.highest_gpm_hero = player['hero_id']
