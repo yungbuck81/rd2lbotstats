@@ -27,6 +27,9 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 permissionkey = open(permissionkeyfile).read()
 
+import logging
+
+
 class Rd2lStats:
 
     def __init__(self):
@@ -1255,6 +1258,11 @@ async def on_message(message):
 
     # Prints out stats in discord embeds
     if message.content.startswith('$bot_get_stats'):
+
+        logger = logging.getLogger('discord')
+        logger.setLevel(logging.ERROR)  # Only log errors and critical messages, not warnings
+
+        rd2lstats.generate_stats()
         gpm1 = process_dict_values_into_list(
             dict(csv.reader(open(pos1directory + pos1gpmfile, 'r', encoding="utf-8", newline=''))))
         gpm2 = process_dict_values_into_list(
